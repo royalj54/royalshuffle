@@ -1,13 +1,13 @@
 import base64
 import hashlib
 import os
-import random
 import secrets
 import urllib.parse
 import webbrowser
 
 import requests
 
+from shuffle_engine import shuffle_items
 
 # ---------------------------------------------------------
 # Configuration
@@ -179,8 +179,7 @@ print(f"Fetched {len(items)} playlist items.")
 # True-random shuffle
 # ---------------------------------------------------------
 
-rng = random.SystemRandom()
-rng.shuffle(items)
+items = shuffle_items(items)
 
 print()
 print("First 20 tracks in the randomized order:")
