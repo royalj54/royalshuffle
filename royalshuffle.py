@@ -1,5 +1,3 @@
-import requests
-
 from auth import authenticate
 from shuffle_engine import shuffle_items
 from spotify_client import SpotifyClient
@@ -14,33 +12,11 @@ OUTPUT_PLAYLIST_NAME = "Kpop - RANDOM"
 
 
 # ---------------------------------------------------------
-# PKCE helpers
-# ---------------------------------------------------------
-
-def create_code_verifier():
-    return secrets.token_urlsafe(64)
-
-
-def create_code_challenge(verifier):
-    digest = hashlib.sha256(verifier.encode()).digest()
-
-    return (
-        base64.urlsafe_b64encode(digest)
-        .decode()
-        .rstrip("=")
-    )
-
-
-# ---------------------------------------------------------
 # Authenticate with Spotify
 # ---------------------------------------------------------
 
 access_token = authenticate()
 spotify = SpotifyClient(access_token)
-
-headers = {
-    "Authorization": f"Bearer {access_token}"
-}
 
 
 # ---------------------------------------------------------
@@ -105,47 +81,6 @@ else:
 
     print(
         f'Created "{OUTPUT_PLAYLIST_NAME}" '
-        f'with ID {output_playlist_id}'
-    )
-
-
-# ---------------------------------------------------------
-# Create output playlist if it does not exist
-# ---------------------------------------------------------
-
-if not output_playlist_id:
-    print(f'Creating "{OUTPUT_PLAYLIST_NAME}"...')
-
-    response = requests.post(
-        "https://api.spotify.com/v1/me/playlists",
-        headers={
-            **headers,
-            "Content-Type": "application/json"
-        },
-        json={
-            "name": OUTPUT_PLAYLIST_NAME,
-            "public": False,
-            "description": (
-                "True-randomized copy generated "
-                "by dmiles-randomizer"
-            ),
-        },
-    )
-
-    response.raise_for_status()
-
-    playlist = response.json()
-
-    output_playlist_id = playlist["id"]
-
-    print(
-        f'Created "{OUTPUT_PLAYLIST_NAME}" '
-        f'with ID {output_playlist_id}'
-    )
-
-else:
-    print(
-        f'Found existing "{OUTPUT_PLAYLIST_NAME}" '
         f'with ID {output_playlist_id}'
     )
 
