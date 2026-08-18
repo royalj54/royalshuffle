@@ -8,6 +8,7 @@ import webbrowser
 import requests
 
 from shuffle_engine import shuffle_items
+from spotify_client import SpotifyClient
 
 # ---------------------------------------------------------
 # Configuration
@@ -108,6 +109,7 @@ token_response.raise_for_status()
 
 token_data = token_response.json()
 access_token = token_data["access_token"]
+spotify = SpotifyClient(access_token)
 
 headers = {
     "Authorization": f"Bearer {access_token}"
@@ -121,55 +123,7 @@ headers = {
 print()
 print("Reading source playlist...")
 
-items = []
-
-url = (
-    f"https://api.spotify.com/v1/playlists/"
-    f"{SOURCE_PLAYLIST_ID}/items"
-)
-
-params = {
-    "limit": 100
-}
-
-while url:
-    response = requests.get(
-        url,
-        headers=headers,
-        params=params
-    )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    for entry in data["items"]:
-        item = entry.get("item")
-
-        if not item:
-            continue
-
-        uri = item.get("uri")
-
-        if not uri:
-            continue
-
-        artists = ", ".join(
-            artist["name"]
-            for artist in item.get("artists", [])
-        )
-
-        items.append({
-            "uri": uri,
-            "name": item.get("name", "Unknown"),
-            "artists": artists,
-        })
-
-    url = data.get("next")
-
-    # "next" already contains pagination information.
-    params = {}
-
+items = spotify.get_playlist_items(SOURCE_PLAYLIST_ID)
 
 print()
 print(f"Fetched {len(items)} playlist items.")
@@ -191,43 +145,41 @@ for number, item in enumerate(items[:20], start=1):
         f"{item['artists']} - {item['name']}"
     )
 
-
 # ---------------------------------------------------------
-# Find an existing output playlist
+# Find or create output playlist
 # ---------------------------------------------------------
 
 print()
 print(f'Looking for "{OUTPUT_PLAYLIST_NAME}"...')
 
-output_playlist_id = None
+playlist = spotify.find_playlist_by_name(OUTPUT_PLAYLIST_NAME)
 
-url = "https://api.spotify.com/v1/me/playlists"
+if playlist:
+    output_playlist_id = playlist["id"]
 
-params = {
-    "limit": 50
-}
-
-while url:
-    response = requests.get(
-        url,
-        headers=headers,
-        params=params
+    print(
+        f'Found existing "{OUTPUT_PLAYLIST_NAME}" '
+        f'with ID {output_playlist_id}'
     )
 
-    response.raise_for_status()
+else:
+    print(f'Creating "{OUTPUT_PLAYLIST_NAME}"...')
 
-    data = response.json()
+    playlist = spotify.create_playlist(
+        name=OUTPUT_PLAYLIST_NAME,
+        description=(
+            "True-randomized copy generated "
+            "by dmiles-randomizer"
+        ),
+        public=False,
+    )
 
-    for playlist in data["items"]:
-        if playlist["name"] == OUTPUT_PLAYLIST_NAME:
-            output_playlist_id = playlist["id"]
-            break
+    output_playlist_id = playlist["id"]
 
-    if output_playlist_id:
-        break
-
-    url = data.get("next")
-    params = {}
+    print(
+        f'Created "{OUTPUT_PLAYLIST_NAME}" '
+        f'with ID {output_playlist_id}'
+    )
 
 
 # ---------------------------------------------------------
@@ -278,25 +230,10 @@ else:
 print()
 print("Clearing existing randomized playlist...")
 
-response = requests.put(
-    (
-        f"https://api.spotify.com/v1/playlists/"
-        f"{output_playlist_id}/items"
-    ),
-    headers={
-        **headers,
-        "Content-Type": "application/json"
-    },
-    json={
-        "uris": []
-    },
-)
-
-response.raise_for_status()
-
+spotify.clear_playlist(output_playlist_id)
 
 # ---------------------------------------------------------
-# Add randomized items in batches of 100
+# Add randomized items
 # ---------------------------------------------------------
 
 uris = [
@@ -307,34 +244,10 @@ uris = [
 print()
 print(f"Writing {len(uris)} randomized items...")
 
-for start in range(0, len(uris), 100):
-    batch = uris[start:start + 100]
-
-    response = requests.post(
-        (
-            f"https://api.spotify.com/v1/playlists/"
-            f"{output_playlist_id}/items"
-        ),
-        headers={
-            **headers,
-            "Content-Type": "application/json"
-        },
-        json={
-            "uris": batch
-        },
-    )
-
-    response.raise_for_status()
-
-    completed = min(
-        start + len(batch),
-        len(uris)
-    )
-
-    print(
-        f"  Added {completed} "
-        f"of {len(uris)}"
-    )
+spotify.add_playlist_items(
+    output_playlist_id,
+    uris
+)
 
 
 # ---------------------------------------------------------
