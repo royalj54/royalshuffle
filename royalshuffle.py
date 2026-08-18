@@ -19,7 +19,11 @@ print()
 print("Loading your Spotify playlists...")
 print()
 
-playlists = spotify.get_playlists()
+playlists = [
+    playlist
+    for playlist in spotify.get_playlists()
+    if not playlist["name"].endswith(" - RANDOM")
+]
 source_playlist = select_playlist(playlists)
 
 SOURCE_PLAYLIST_ID = source_playlist["id"]
