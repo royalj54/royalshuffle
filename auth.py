@@ -4,9 +4,8 @@ import os
 import secrets
 import urllib.parse
 import webbrowser
-
 import requests
-
+import subprocess
 
 CLIENT_ID = os.environ["SPOTIFY_CLIENT_ID"]
 
@@ -54,7 +53,13 @@ def start_authentication():
         + urllib.parse.urlencode(params)
     )
 
-    webbrowser.open(auth_url)
+    subprocess.run(
+        [
+            "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+            auth_url
+        ],
+        check=False,
+    )
 
     return {
         "auth_url": auth_url,
