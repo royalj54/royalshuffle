@@ -1,5 +1,11 @@
 import tkinter as tk
 
+from auth import authenticate
+
+
+def connect_spotify():
+    authenticate()
+
 
 def main():
     root = tk.Tk()
@@ -17,7 +23,14 @@ def main():
         root,
         text="Transparent, user-controlled Spotify shuffle"
     )
-    subtitle.pack()
+    subtitle.pack(pady=10)
+
+    connect_button = tk.Button(
+        root,
+        text="Connect Spotify",
+        command=connect_spotify
+    )
+    connect_button.pack(pady=20)
 
     root.mainloop()
 
