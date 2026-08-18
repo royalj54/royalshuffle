@@ -22,6 +22,12 @@ def main():
         for playlist in spotify.get_playlists()
         if not playlist["name"].endswith(" - RANDOM")
     ]
+
+    if not playlists:
+        print()
+        print("No eligible source playlists found.")
+        return
+    
     source_playlist = select_playlist(playlists)
 
     SOURCE_PLAYLIST_ID = source_playlist["id"]
