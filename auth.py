@@ -33,7 +33,7 @@ def create_code_challenge(verifier):
     )
 
 
-def authenticate():
+def start_authentication():
     code_verifier = create_code_verifier()
     code_challenge = create_code_challenge(code_verifier)
 
@@ -54,18 +54,16 @@ def authenticate():
         + urllib.parse.urlencode(params)
     )
 
-    print()
-    print("Open this URL in your browser:")
-    print()
-    print(auth_url)
-    print()
-
     webbrowser.open(auth_url)
 
-    callback_url = input(
-        "After Spotify redirects you, paste the FULL callback URL here:\n> "
-    )
+    return {
+        "auth_url": auth_url,
+        "code_verifier": code_verifier,
+        "state": state,
+    }
 
+
+def finish_authentication(callback_url, code_verifier, state):
     parsed = urllib.parse.urlparse(callback_url)
     query = urllib.parse.parse_qs(parsed.query)
 
@@ -95,3 +93,23 @@ def authenticate():
     token_data = token_response.json()
 
     return token_data["access_token"]
+
+
+def authenticate():
+    auth_session = start_authentication()
+
+    print()
+    print("Open this URL in your browser:")
+    print()
+    print(auth_session["auth_url"])
+    print()
+
+    callback_url = input(
+        "After Spotify redirects you, paste the FULL callback URL here:\n> "
+    )
+
+    return finish_authentication(
+        callback_url,
+        auth_session["code_verifier"],
+        auth_session["state"],
+    )
