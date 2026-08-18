@@ -1,11 +1,7 @@
 from auth import authenticate
+from playlist_selector import select_playlist
 from shuffle_engine import shuffle_items
 from spotify_client import SpotifyClient
-
-# ---------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------
-
 
 
 # ---------------------------------------------------------
@@ -24,29 +20,7 @@ print("Loading your Spotify playlists...")
 print()
 
 playlists = spotify.get_playlists()
-
-for number, playlist in enumerate(playlists, start=1):
-    print(
-        f"{number:2}. "
-        f"{playlist['name']}"
-    )
-
-print()
-
-while True:
-    choice = input("Choose a playlist number: ").strip()
-
-    try:
-        playlist_index = int(choice) - 1
-        source_playlist = playlists[playlist_index]
-
-        if playlist_index < 0:
-            raise IndexError
-
-        break
-
-    except (ValueError, IndexError):
-        print("Please enter a valid playlist number.")
+source_playlist = select_playlist(playlists)
 
 SOURCE_PLAYLIST_ID = source_playlist["id"]
 OUTPUT_PLAYLIST_NAME = f'{source_playlist["name"]} - RANDOM'
