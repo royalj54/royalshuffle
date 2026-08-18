@@ -56,6 +56,32 @@ class SpotifyClient:
 
         return items
 
+    def get_playlists(self):
+        playlists = []
+
+        url = "https://api.spotify.com/v1/me/playlists"
+
+        params = {
+            "limit": 50
+        }
+
+        while url:
+            response = requests.get(
+                url,
+                headers=self.headers,
+                params=params
+            )
+
+            response.raise_for_status()
+            data = response.json()
+
+            playlists.extend(data["items"])
+
+            url = data.get("next")
+            params = {}
+
+        return playlists
+
     def find_playlist_by_name(self, playlist_name):
         url = "https://api.spotify.com/v1/me/playlists"
 

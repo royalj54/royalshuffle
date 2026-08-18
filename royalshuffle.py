@@ -6,10 +6,7 @@ from spotify_client import SpotifyClient
 # Configuration
 # ---------------------------------------------------------
 
-SOURCE_PLAYLIST_ID = "5kIThQnpUJva1XTUvujOfs"
-
 OUTPUT_PLAYLIST_NAME = "Kpop - RANDOM"
-
 
 # ---------------------------------------------------------
 # Authenticate with Spotify
@@ -18,7 +15,45 @@ OUTPUT_PLAYLIST_NAME = "Kpop - RANDOM"
 access_token = authenticate()
 spotify = SpotifyClient(access_token)
 
+# ---------------------------------------------------------
+# Select source playlist
+# ---------------------------------------------------------
 
+print()
+print("Loading your Spotify playlists...")
+print()
+
+playlists = spotify.get_playlists()
+
+for number, playlist in enumerate(playlists, start=1):
+    print(
+        f"{number:2}. "
+        f"{playlist['name']}"
+    )
+
+print()
+
+while True:
+    choice = input("Choose a playlist number: ").strip()
+
+    try:
+        playlist_index = int(choice) - 1
+        source_playlist = playlists[playlist_index]
+
+        if playlist_index < 0:
+            raise IndexError
+
+        break
+
+    except (ValueError, IndexError):
+        print("Please enter a valid playlist number.")
+
+SOURCE_PLAYLIST_ID = source_playlist["id"]
+
+print()
+print(
+    f'Selected "{source_playlist["name"]}"'
+)
 # ---------------------------------------------------------
 # Fetch every item from the source playlist
 # ---------------------------------------------------------
