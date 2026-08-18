@@ -6,7 +6,7 @@ from spotify_client import SpotifyClient
 # Configuration
 # ---------------------------------------------------------
 
-OUTPUT_PLAYLIST_NAME = "Kpop - RANDOM"
+
 
 # ---------------------------------------------------------
 # Authenticate with Spotify
@@ -49,11 +49,13 @@ while True:
         print("Please enter a valid playlist number.")
 
 SOURCE_PLAYLIST_ID = source_playlist["id"]
+OUTPUT_PLAYLIST_NAME = f'{source_playlist["name"]} - RANDOM'
 
 print()
 print(
     f'Selected "{source_playlist["name"]}"'
 )
+
 # ---------------------------------------------------------
 # Fetch every item from the source playlist
 # ---------------------------------------------------------
