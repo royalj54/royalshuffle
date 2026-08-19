@@ -1,13 +1,15 @@
 import tkinter as tk
 
 from auth import start_authentication, finish_authentication
-
+from spotify_client import SpotifyClient
 
 def connect_spotify(
     status_label, 
     callback_entry, 
     connect_button,
     complete_button,
+    playlist_listbox,
+    eligible_playlists,
 ):
     auth_session = start_authentication()
 
@@ -46,6 +48,20 @@ def connect_spotify(
             callback_entry.config(state="disabled")
             complete_button.config(state="disabled")
 
+            client = SpotifyClient(access_token)
+
+            playlists = client.get_playlists()
+
+            eligible_playlists.clear()
+            eligible_playlists.extend([
+                playlist
+                for playlist in playlists
+                if not playlist["name"].endswith(" - RANDOM")
+            ])
+
+            for playlist in eligible_playlists:
+                playlist_listbox.insert(tk.END, playlist["name"])
+
     complete_button.config(
         command=finish_connection,
         state="normal",
@@ -59,7 +75,7 @@ def connect_spotify(
 def main():
     root = tk.Tk()
     root.title("RoyalShuffle")
-    root.geometry("650x450")
+    root.geometry("650x600")
 
     title = tk.Label(
         root,
@@ -97,6 +113,8 @@ def main():
             callback_entry,
             connect_button,
             complete_button,
+            playlist_listbox,
+            eligible_playlists,
         )
     )
     connect_button.pack(pady=20)
@@ -109,8 +127,43 @@ def main():
     )
     complete_button.pack(pady=10)
 
-    root.mainloop()
+    playlist_listbox = tk.Listbox(
+        root,
+        width=60,
+        height=8,
+    )
+    playlist_listbox.pack(pady=10)
 
+    eligible_playlists = []
+
+    def handle_playlist_selection():
+        selection = playlist_listbox.curselection()
+
+        if not selection:
+            status_label.config(
+                text="Select a playlist first"
+            )
+            return
+
+        selected_playlist = eligible_playlists[selection[0]]
+
+        status_label.config(
+            text=f'Selected: {selected_playlist["name"]}'
+        )
+
+        print(
+            f'DEBUG: selected playlist ID: {selected_playlist["id"]}'
+        )
+
+    select_button = tk.Button(
+        root,
+        text="Select Playlist",
+        width=20,
+        command=handle_playlist_selection,
+    )
+    select_button.pack(pady=10)
+
+    root.mainloop()
 
 if __name__ == "__main__":
     main()
