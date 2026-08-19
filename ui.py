@@ -2,6 +2,7 @@ import tkinter as tk
 
 from auth import start_authentication, finish_authentication
 from spotify_client import SpotifyClient
+from royalshuffle import royal_shuffle
 
 def connect_spotify(
     status_label, 
@@ -10,6 +11,7 @@ def connect_spotify(
     complete_button,
     playlist_listbox,
     eligible_playlists,
+    client_state,
 ):
     auth_session = start_authentication()
 
@@ -49,6 +51,7 @@ def connect_spotify(
             complete_button.config(state="disabled")
 
             client = SpotifyClient(access_token)
+            client_state["client"] = client
 
             playlists = client.get_playlists()
 
@@ -75,7 +78,7 @@ def connect_spotify(
 def main():
     root = tk.Tk()
     root.title("RoyalShuffle")
-    root.geometry("650x600")
+    root.geometry("650x700")
 
     title = tk.Label(
         root,
@@ -115,6 +118,7 @@ def main():
             complete_button,
             playlist_listbox,
             eligible_playlists,
+            client_state,
         )
     )
     connect_button.pack(pady=20)
@@ -136,6 +140,14 @@ def main():
 
     eligible_playlists = []
 
+    selected_playlist_state = {
+        "playlist": None
+    }
+
+    client_state = {
+        "client": None
+    }
+
     def handle_playlist_selection():
         selection = playlist_listbox.curselection()
 
@@ -146,6 +158,10 @@ def main():
             return
 
         selected_playlist = eligible_playlists[selection[0]]
+
+        selected_playlist_state["playlist"] = selected_playlist
+
+        royal_shuffle_button.config(state="normal")
 
         status_label.config(
             text=f'Selected: {selected_playlist["name"]}'
@@ -162,6 +178,41 @@ def main():
         command=handle_playlist_selection,
     )
     select_button.pack(pady=10)
+
+    def handle_royal_shuffle():
+        selected_playlist = selected_playlist_state["playlist"]
+
+        if not selected_playlist:
+            status_label.config(
+                text="Select a playlist first"
+            )
+            return
+
+        status_label.config(
+            text=f'Royal Shuffling: {selected_playlist["name"]}...'
+        )
+        root.update_idletasks()
+
+        result = royal_shuffle(
+            client_state["client"],
+            selected_playlist,
+        )
+
+        status_label.config(
+            text=(
+                f'Created {result["name"]} '
+                f'with {result["item_count"]} items'
+            )
+        )
+
+    royal_shuffle_button = tk.Button(
+        root,
+        text="Royal Shuffle",
+        width=20,
+        state="disabled",
+        command=handle_royal_shuffle,
+    )
+    royal_shuffle_button.pack(pady=10)
 
     root.mainloop()
 
