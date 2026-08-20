@@ -3,14 +3,32 @@ from playlist_selector import select_playlist
 from shuffle_engine import shuffle_items
 from spotify_client import SpotifyClient
 
-def royal_shuffle(spotify, source_playlist):
+def royal_shuffle(
+    spotify, 
+    source_playlist,
+    status_callback=None,
+):
+    def report_status(message):
+        if status_callback:
+            status_callback(message)
+
     source_playlist_id = source_playlist["id"]
     output_playlist_name = f'{source_playlist["name"]} - RANDOM'
 
+    report_status("Reading source playlist...")
+
     items = spotify.get_playlist_items(source_playlist_id)
+    
+    report_status(
+        f'Shuffling {len(items)} items...'
+    )
 
     items = shuffle_items(items)
 
+    report_status(
+        f'Preparing {output_playlist_name}...'
+    )
+    
     playlist = spotify.find_playlist_by_name(
         output_playlist_name
     )
@@ -29,8 +47,12 @@ def royal_shuffle(spotify, source_playlist):
 
         output_playlist_id = playlist["id"]
 
-    spotify.clear_playlist(output_playlist_id)
+    report_status(
+        f'Updating {output_playlist_name}...'
+    )
 
+    spotify.clear_playlist(output_playlist_id)
+    
     uris = [
         item["uri"]
         for item in items
@@ -39,6 +61,10 @@ def royal_shuffle(spotify, source_playlist):
     spotify.add_playlist_items(
         output_playlist_id,
         uris,
+    )
+
+    report_status(
+        f'Created {output_playlist_name} with {len(uris)} items'
     )
 
     return {
@@ -72,11 +98,6 @@ def main():
         return
     
     source_playlist = select_playlist(playlists)
-
-    result = royal_shuffle(
-        spotify,
-        source_playlist,
-    )
 
     SOURCE_PLAYLIST_ID = source_playlist["id"]
     OUTPUT_PLAYLIST_NAME = f'{source_playlist["name"]} - RANDOM'

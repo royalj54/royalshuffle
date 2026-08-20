@@ -148,6 +148,16 @@ def main():
         "client": None
     }
 
+    def update_status(message):
+        print(f"status: {message}")
+        
+        status_label.config(
+            text=message
+        )
+
+        root.update_idletasks()
+
+
     def handle_playlist_selection():
         selection = playlist_listbox.curselection()
 
@@ -196,6 +206,7 @@ def main():
         result = royal_shuffle(
             client_state["client"],
             selected_playlist,
+            status_callback=update_status,
         )
 
         status_label.config(
@@ -213,6 +224,7 @@ def main():
         command=handle_royal_shuffle,
     )
     royal_shuffle_button.pack(pady=10)
+
 
     root.mainloop()
 
