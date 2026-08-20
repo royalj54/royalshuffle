@@ -198,23 +198,32 @@ def main():
             )
             return
 
+        royal_shuffle_button.config(
+            state="disabled"
+        )
+
         status_label.config(
             text=f'Royal Shuffling: {selected_playlist["name"]}...'
         )
         root.update_idletasks()
 
-        result = royal_shuffle(
-            client_state["client"],
-            selected_playlist,
-            status_callback=update_status,
-        )
-
-        status_label.config(
-            text=(
-                f'Created {result["name"]} '
-                f'with {result["item_count"]} items'
+        try:
+            result = royal_shuffle(
+                client_state["client"],
+                selected_playlist,
+                status_callback=update_status,
             )
-        )
+
+            status_label.config(
+                text=(
+                    f'Created {result["name"]} '
+                    f'with {result["item_count"]} items'
+                )
+            )
+        finally:
+            royal_shuffle_button.config(
+                state='normal'
+            )
 
     royal_shuffle_button = tk.Button(
         root,
