@@ -220,6 +220,19 @@ def main():
                     f'with {result["item_count"]} items'
                 )
             )
+
+            status_label.config(
+                text=(
+                    f'Done: {result["name"]}'
+                    f'• {result["item_count"]} items'
+                )
+            )
+
+        except Exception as exc:
+            print(
+                f"Royal Shuffle failed. Please try again."
+            )
+
         finally:
             royal_shuffle_button.config(
                 state='normal'
