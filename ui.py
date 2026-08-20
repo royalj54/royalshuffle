@@ -217,20 +217,17 @@ def main():
             status_label.config(
                 text=(
                     f'Created {result["name"]} '
-                    f'with {result["item_count"]} items'
-                )
-            )
-
-            status_label.config(
-                text=(
-                    f'Done: {result["name"]}'
-                    f'• {result["item_count"]} items'
+                    f' • {result["item_count"]} items'
                 )
             )
 
         except Exception as exc:
             print(
-                f"Royal Shuffle failed. Please try again."
+                f"Royal Shuffle failed: {exc!r}"
+            )
+
+            status_label.config(
+                text="Royal Shuffle failed. Please try again."
             )
 
         finally:
