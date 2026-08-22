@@ -137,7 +137,8 @@ def main():
         height=8,
     )
     playlist_listbox.pack(
-        fill="x",
+        fill="both",
+        expand=True,
         padx=20,
         pady=10,
     )
