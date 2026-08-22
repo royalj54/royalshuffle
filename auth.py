@@ -7,6 +7,9 @@ import webbrowser
 import requests
 import subprocess
 
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+
 CLIENT_ID = os.environ["SPOTIFY_CLIENT_ID"]
 
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
@@ -17,7 +20,44 @@ SCOPES = " ".join([
     "playlist-modify-public",
 ])
 
+class SpotifyCallbackHandler(BaseHTTPRequestHandler):
+    callback_url = None
 
+    def do_GET(self):
+        SpotifyCallbackHandler.callback_url = (
+            f"http://{self.headers['Host']}{self.path}"
+        )
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+
+        self.wfile.write(
+            b"""
+            <html>
+                <body>
+                    <h2>RoyalShuffle connected to Spotify.</h2>
+                    <p>You can close this browser window.</p>
+                </body>
+            </html>
+            """
+        )
+
+    def log_message(self, format, *args):
+        return
+
+def wait_for_spotify_callback():
+    SpotifyCallbackHandler.callback_url = None
+
+    server = HTTPServer(
+        ("127.0.0.1", 8888),
+        SpotifyCallbackHandler,
+    )
+
+    server.handle_request()
+    server.server_close()
+
+    return SpotifyCallbackHandler.callback_url
 def create_code_verifier():
     return secrets.token_urlsafe(64)
 
