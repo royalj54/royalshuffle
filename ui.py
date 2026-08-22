@@ -166,6 +166,8 @@ def main():
         expand=True,
     )
 
+
+
     eligible_playlists = []
 
     selected_playlist_state = {
@@ -196,18 +198,39 @@ def main():
             return
 
         selected_playlist = eligible_playlists[selection[0]]
-
         selected_playlist_state["playlist"] = selected_playlist
-
-        royal_shuffle_button.config(state="normal")
 
         status_label.config(
             text=f'Selected: {selected_playlist["name"]}'
         )
 
+        royal_shuffle_button.config(
+            state="normal"
+        )
+
         print(
             f'DEBUG: selected playlist ID: {selected_playlist["id"]}'
         )
+
+    playlist_listbox.bind(
+        "<Double-Button-1>",
+        lambda event: handle_playlist_selection(),
+    )
+
+    playlist_listbox.bind(
+        "<Button-1>",
+        lambda event: playlist_listbox.focus_set(),
+    )
+
+    playlist_listbox.bind(
+        "<Return>",
+        lambda event: handle_playlist_selection(),
+    )
+
+    playlist_listbox.bind(
+        "<KP_Enter>",
+        lambda event: handle_playlist_selection(),
+    )
 
     select_button = tk.Button(
         root,
