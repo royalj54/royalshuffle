@@ -232,10 +232,6 @@ def main():
             state="normal"
         )
 
-        print(
-            f'DEBUG: selected playlist ID: {selected_playlist["id"]}'
-        )
-
     playlist_listbox.bind(
         "<Double-Button-1>",
         lambda event: handle_playlist_selection(),
@@ -283,7 +279,7 @@ def main():
 
             status_label.config(
                 text=(
-                    f'Created {result["name"]} '
+                    f'Done: {result["name"]} '
                     f' • {result["item_count"]} items'
                 )
             )
