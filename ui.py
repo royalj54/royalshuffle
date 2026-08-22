@@ -52,17 +52,14 @@ def connect_spotify(
                 auth_session["state"],
             )
 
-            print(
-                f"DEBUG: token received: {bool(access_token)}"
-            )
-
             if access_token:
                 status_label.config(
-                    text="Connected to Spotify"
+                    text="Connected to Spotify • Select a playlist"
                 )
 
                 client = SpotifyClient(access_token)
                 client_state["client"] = client
+                connect_button.config(state="disabled")
 
                 playlists = client.get_playlists()
 
@@ -89,7 +86,7 @@ def connect_spotify(
             )
 
             status_label.config(
-                text="Spotify connection failed. Please try again."
+                text="Spotify connection failed. Click Connect Spotify to retry."
             )
 
             connect_button.config(state="normal")
@@ -102,7 +99,7 @@ def connect_spotify(
             )
 
             status_label.config(
-                text="Spotify connection failed. Please try again."
+                text="Spotify connection failed. Click Connect Spotify to retry."
             )
 
             connect_button.config(state="normal")
