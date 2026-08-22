@@ -72,6 +72,7 @@ def connect_spotify(
                     )
                 ])
 
+                playlist_listbox.config(state="normal")
                 playlist_listbox.delete(0, tk.END)
 
                 for playlist in eligible_playlists:
@@ -175,6 +176,7 @@ def main():
         playlist_frame,
         width=60,
         height=8,
+        state="disabled",
         yscrollcommand=playlist_scrollbar.set,
     )
 
