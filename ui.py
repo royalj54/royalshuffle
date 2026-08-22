@@ -121,7 +121,8 @@ def connect_spotify(
 def main():
     root = tk.Tk()
     root.title("RoyalShuffle")
-    root.minsize(650, 700)
+    root.geometry()
+    root.minsize(500, 500)
 
     title = tk.Label(
         root,
