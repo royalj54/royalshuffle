@@ -131,16 +131,39 @@ def main():
     )
     complete_button.pack(pady=10)
 
-    playlist_listbox = tk.Listbox(
-        root,
-        width=60,
-        height=8,
-    )
-    playlist_listbox.pack(
+    playlist_frame = tk.Frame(root)
+    playlist_frame.pack(
         fill="both",
         expand=True,
         padx=20,
         pady=10,
+    )
+
+    playlist_scrollbar = tk.Scrollbar(
+        playlist_frame,
+        orient="vertical",
+    )
+
+    playlist_listbox = tk.Listbox(
+        playlist_frame,
+        width=60,
+        height=8,
+        yscrollcommand=playlist_scrollbar.set,
+    )
+
+    playlist_scrollbar.config(
+        command=playlist_listbox.yview
+    )
+
+    playlist_scrollbar.pack(
+        side="right",
+        fill="y",
+    )
+
+    playlist_listbox.pack(
+        side="left",
+        fill="both",
+        expand=True,
     )
 
     eligible_playlists = []
