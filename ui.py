@@ -78,7 +78,7 @@ def connect_spotify(
 def main():
     root = tk.Tk()
     root.title("RoyalShuffle")
-    root.geometry("650x700")
+    root.minsize(650, 700)
 
     title = tk.Label(
         root,
@@ -136,7 +136,11 @@ def main():
         width=60,
         height=8,
     )
-    playlist_listbox.pack(pady=10)
+    playlist_listbox.pack(
+        fill="x",
+        padx=20,
+        pady=10,
+    )
 
     eligible_playlists = []
 
