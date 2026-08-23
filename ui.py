@@ -46,11 +46,13 @@ def connect_spotify(
         print("DEBUG: finishing authentication")
 
         try:
-            access_token = finish_authentication(
+            token_data = finish_authentication(
                 callback_url,
                 auth_session["code_verifier"],
                 auth_session["state"],
             )
+
+            access_token = token_data["access_token"]
 
             if access_token:
                 status_label.config(

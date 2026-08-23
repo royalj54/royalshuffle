@@ -137,7 +137,7 @@ def finish_authentication(callback_url, code_verifier, state):
 
     token_data = token_response.json()
 
-    return token_data["access_token"]
+    return token_data
 
 
 def authenticate():
