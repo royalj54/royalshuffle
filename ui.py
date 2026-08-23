@@ -8,6 +8,7 @@ from auth import (
     save_token_data,
     load_token_data,
     refresh_access_token,
+    clear_token_data,
 )
 
 from spotify_client import SpotifyClient
@@ -107,14 +108,18 @@ def connect_spotify(
 
         except Exception as exc:
             print(
-                f"Spotify connection failed: {exc!r}"
+                f"Spotify automatic login failed: {exc!r}"
             )
+
+            clear_token_data()
 
             status_label.config(
-                text="Spotify connection failed. Click Connect Spotify to retry."
+                text="Not connected"
             )
 
-            connect_button.config(state="normal")
+            connect_button.config(
+                state="normal"
+            )
 
     def check_for_callback():
         if callback_state["error"] is not None:

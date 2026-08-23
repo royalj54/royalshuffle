@@ -190,3 +190,7 @@ def refresh_access_token(refresh_token):
     token_data = token_response.json()
 
     return token_data
+
+def clear_token_data():
+    if TOKEN_FILE.exists():
+        TOKEN_FILE.unlink()
