@@ -6,6 +6,8 @@ from auth import (
     finish_authentication,
     wait_for_spotify_callback,
     save_token_data,
+    load_token_data,
+    refresh_access_token,
 )
 
 from spotify_client import SpotifyClient
@@ -331,6 +333,64 @@ def main():
     )
     royal_shuffle_button.pack(pady=10)
 
+    def try_saved_spotify_session():
+        saved_token_data = load_token_data()
+
+        if not saved_token_data:
+            return
+
+        refresh_token = saved_token_data.get(
+            "refresh_token"
+        )
+
+        if not refresh_token:
+            return
+
+        status_label.config(
+            text="Reconnecting to Spotify..."
+        )
+
+        try:
+            refreshed_token_data = refresh_access_token(
+                refresh_token
+            )
+
+            saved_token_data.update(
+                refreshed_token_data
+            )
+
+            save_token_data(saved_token_data)
+
+            access_token = saved_token_data[
+                "access_token"
+            ]
+
+            load_spotify_session(
+                access_token,
+                status_label,
+                connect_button,
+                playlist_listbox,
+                eligible_playlists,
+                client_state,
+            )
+
+        except Exception as exc:
+            print(
+                f"Spotify automatic login failed: {exc!r}"
+            )
+
+            status_label.config(
+                text="Not connected"
+            )
+
+            connect_button.config(
+                state="normal"
+            )
+
+    root.after(
+        100,
+        try_saved_spotify_session,
+    )
 
     root.mainloop()
 
