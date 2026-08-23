@@ -13,6 +13,9 @@ from auth import (
 
 from spotify_client import SpotifyClient
 from royalshuffle import royal_shuffle
+from pathlib import Path
+
+LAST_PLAYLIST_FILE = Path.home() / ".royalshuffle_last_playlist"
 
 def load_spotify_session(
     access_token,
@@ -21,6 +24,8 @@ def load_spotify_session(
     playlist_listbox,
     eligible_playlists,
     client_state,
+    selected_playlist_state,
+    royal_shuffle_button,
 ):
     client = SpotifyClient(access_token)
     client_state["client"] = client
@@ -45,6 +50,28 @@ def load_spotify_session(
             playlist["name"],
         )
 
+    if LAST_PLAYLIST_FILE.exists():
+        last_playlist_id = LAST_PLAYLIST_FILE.read_text().strip()
+
+        for index, playlist in enumerate(eligible_playlists):
+            if playlist["id"] == last_playlist_id:
+                playlist_listbox.selection_set(index)
+                playlist_listbox.activate(index)
+                playlist_listbox.see(index)
+
+                selected_playlist_state["playlist"] = playlist
+
+                status_label.config(
+                    text=f'Selected: {playlist["name"]}'
+                )
+
+                royal_shuffle_button.config(
+                    state="normal"
+                )
+
+                connect_button.config(state="disabled")
+                return
+
     status_label.config(
         text="Connected to Spotify • Select a playlist"
     )
@@ -57,6 +84,8 @@ def connect_spotify(
     playlist_listbox,
     eligible_playlists,
     client_state,
+    selected_playlist_state,
+    royal_shuffle_button,
 ):
     callback_state = {
         "url": None,
@@ -104,6 +133,8 @@ def connect_spotify(
                 playlist_listbox,
                 eligible_playlists,
                 client_state,
+                selected_playlist_state,
+                royal_shuffle_button,
             )
 
         except Exception as exc:
@@ -184,6 +215,8 @@ def main():
             playlist_listbox,
             eligible_playlists,
             client_state,
+            selected_playlist_state,
+            royal_shuffle_button,
         )
     )
     connect_button.pack(pady=20)
@@ -254,6 +287,10 @@ def main():
 
         selected_playlist = eligible_playlists[selection[0]]
         selected_playlist_state["playlist"] = selected_playlist
+
+        LAST_PLAYLIST_FILE.write_text(
+            selected_playlist["id"]
+        )
 
         status_label.config(
             text=f'Selected: {selected_playlist["name"]}'
@@ -378,6 +415,8 @@ def main():
                 playlist_listbox,
                 eligible_playlists,
                 client_state,
+                selected_playlist_state,
+                royal_shuffle_button,
             )
 
         except Exception as exc:
