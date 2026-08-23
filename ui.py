@@ -11,6 +11,43 @@ from auth import (
 from spotify_client import SpotifyClient
 from royalshuffle import royal_shuffle
 
+def load_spotify_session(
+    access_token,
+    status_label,
+    connect_button,
+    playlist_listbox,
+    eligible_playlists,
+    client_state,
+):
+    client = SpotifyClient(access_token)
+    client_state["client"] = client
+
+    playlists = client.get_playlists()
+
+    eligible_playlists.clear()
+    eligible_playlists.extend([
+        playlist
+        for playlist in playlists
+        if not playlist["name"].endswith(
+            " - RANDOM"
+        )
+    ])
+
+    playlist_listbox.config(state="normal")
+    playlist_listbox.delete(0, tk.END)
+
+    for playlist in eligible_playlists:
+        playlist_listbox.insert(
+            tk.END,
+            playlist["name"],
+        )
+
+    status_label.config(
+        text="Connected to Spotify • Select a playlist"
+    )
+
+    connect_button.config(state="disabled")
+
 def connect_spotify(
     status_label,
     connect_button,
@@ -57,34 +94,14 @@ def connect_spotify(
 
             access_token = token_data["access_token"]
 
-            if access_token:
-                status_label.config(
-                    text="Connected to Spotify • Select a playlist"
-                )
-
-                client = SpotifyClient(access_token)
-                client_state["client"] = client
-                connect_button.config(state="disabled")
-
-                playlists = client.get_playlists()
-
-                eligible_playlists.clear()
-                eligible_playlists.extend([
-                    playlist
-                    for playlist in playlists
-                    if not playlist["name"].endswith(
-                        " - RANDOM"
-                    )
-                ])
-
-                playlist_listbox.config(state="normal")
-                playlist_listbox.delete(0, tk.END)
-
-                for playlist in eligible_playlists:
-                    playlist_listbox.insert(
-                        tk.END,
-                        playlist["name"],
-                    )
+            load_spotify_session(
+                access_token,
+                status_label,
+                connect_button,
+                playlist_listbox,
+                eligible_playlists,
+                client_state,
+            )
 
         except Exception as exc:
             print(
