@@ -6,10 +6,12 @@ import urllib.parse
 import webbrowser
 import requests
 import subprocess
-
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
+import json
+from pathlib import Path
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
+TOKEN_FILE = Path.home() / ".royalshuffle_token.json"
 CLIENT_ID = os.environ["SPOTIFY_CLIENT_ID"]
 
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
@@ -19,6 +21,11 @@ SCOPES = " ".join([
     "playlist-modify-private",
     "playlist-modify-public",
 ])
+
+def save_token_data(token_data):
+    TOKEN_FILE.write_text(
+        json.dumps(token_data, indent=2)
+    )
 
 class SpotifyCallbackHandler(BaseHTTPRequestHandler):
     callback_url = None

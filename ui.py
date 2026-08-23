@@ -5,6 +5,7 @@ from auth import (
     start_authentication, 
     finish_authentication,
     wait_for_spotify_callback,
+    save_token_data,
 )
 
 from spotify_client import SpotifyClient
@@ -51,6 +52,8 @@ def connect_spotify(
                 auth_session["code_verifier"],
                 auth_session["state"],
             )
+
+            save_token_data(token_data)
 
             access_token = token_data["access_token"]
 
