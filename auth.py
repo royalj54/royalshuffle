@@ -165,3 +165,28 @@ def authenticate():
         auth_session["code_verifier"],
         auth_session["state"],
     )
+
+def load_token_data():
+    if not TOKEN_FILE.exists():
+        return None
+
+    return json.loads(
+        TOKEN_FILE.read_text()
+    )
+
+
+def refresh_access_token(refresh_token):
+    token_response = requests.post(
+        "https://accounts.spotify.com/api/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": CLIENT_ID,
+        },
+    )
+
+    token_response.raise_for_status()
+
+    token_data = token_response.json()
+
+    return token_data
