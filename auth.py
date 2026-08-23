@@ -160,11 +160,13 @@ def authenticate():
         "After Spotify redirects you, paste the FULL callback URL here:\n> "
     )
 
-    return finish_authentication(
+    token_data = finish_authentication(
         callback_url,
         auth_session["code_verifier"],
         auth_session["state"],
     )
+
+    return token_data["access_token"]
 
 def load_token_data():
     if not TOKEN_FILE.exists():
