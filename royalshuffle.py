@@ -33,6 +33,8 @@ def royal_shuffle(
         output_playlist_name
     )
 
+    playlist_action = "updated" if playlist else "created"
+
     if playlist:
         output_playlist_id = playlist["id"]
     else:
@@ -64,13 +66,15 @@ def royal_shuffle(
     )
 
     report_status(
-        f'Created {output_playlist_name} with {len(uris)} items'
+        f'{playlist_action.title()} '
+        f'{output_playlist_name} with {len(uris)} items'
     )
 
     return {
         "name": output_playlist_name,
         "id": output_playlist_id,
         "item_count": len(uris),
+        "action": playlist_action,
     }
 
 def main():

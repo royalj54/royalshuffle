@@ -310,7 +310,8 @@ def main():
 
             status_label.config(
                 text=(
-                    f'Done: {result["name"]} '
+                    f'{result["action"].title()}: '
+                    f'{result["name"]} '
                     f' • {result["item_count"]} items'
                 )
             )
