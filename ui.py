@@ -1,5 +1,6 @@
 import tkinter as tk
 import threading
+import traceback
 
 from auth import (
     start_authentication, 
@@ -9,11 +10,13 @@ from auth import (
     load_token_data,
     refresh_access_token,
     clear_token_data,
+    log_debug,
 )
 
 from spotify_client import SpotifyClient
 from royalshuffle import royal_shuffle
 from pathlib import Path
+from tkinter import simpledialog
 
 LAST_PLAYLIST_FILE = Path.home() / ".royalshuffle_last_playlist"
 
@@ -27,10 +30,13 @@ def load_spotify_session(
     selected_playlist_state,
     royal_shuffle_button,
 ):
+    log_debug("Creating Spotify client session")
     client = SpotifyClient(access_token)
     client_state["client"] = client
 
+    log_debug("Fetching Spotify playlists")
     playlists = client.get_playlists()
+    log_debug(f"Spotify playlist fetch succeeded; count={len(playlists)}")
 
     eligible_playlists.clear()
     eligible_playlists.extend([
@@ -87,6 +93,8 @@ def connect_spotify(
     selected_playlist_state,
     royal_shuffle_button,
 ):
+    log_debug("Connect Spotify button pressed")
+
     callback_state = {
         "url": None,
         "error": None,
@@ -97,6 +105,10 @@ def connect_spotify(
             callback_state["url"] = wait_for_spotify_callback()
         except Exception as exc:
             callback_state["error"] = exc
+            log_debug(
+                "Spotify callback listener exception:\n"
+                + traceback.format_exc()
+            )
 
     listener_thread = threading.Thread(
         target=listen_for_callback,
@@ -105,6 +117,7 @@ def connect_spotify(
     listener_thread.start()
 
     auth_session = start_authentication()
+    log_debug("Spotify browser authorization started")
 
     status_label.config(
         text="Waiting for Spotify authorization..."
@@ -114,6 +127,7 @@ def connect_spotify(
 
     def finish_connection(callback_url):
         print("DEBUG: finishing authentication")
+        log_debug("UI received Spotify callback; finishing connection")
 
         try:
             token_data = finish_authentication(
@@ -122,10 +136,12 @@ def connect_spotify(
                 auth_session["state"],
             )
 
+            log_debug("OAuth token data returned to UI")
             save_token_data(token_data)
 
             access_token = token_data["access_token"]
 
+            log_debug("Loading Spotify session after authentication")
             load_spotify_session(
                 access_token,
                 status_label,
@@ -136,10 +152,15 @@ def connect_spotify(
                 selected_playlist_state,
                 royal_shuffle_button,
             )
+            log_debug("Spotify connection completed successfully")
 
         except Exception as exc:
             print(
                 f"Spotify automatic login failed: {exc!r}"
+            )
+            log_debug(
+                "Spotify connection failed:\n"
+                + traceback.format_exc()
             )
 
             clear_token_data()
@@ -329,6 +350,26 @@ def main():
             )
             return
 
+        default_name = f'{selected_playlist["name"]} - RANDOM'
+
+        output_playlist_name = simpledialog.askstring(
+            "RoyalShuffle",
+            "Name your shuffled playlist:",
+            initialvalue=default_name,
+            parent=root,
+        )
+
+        if output_playlist_name is None:
+            return
+
+        output_playlist_name = output_playlist_name.strip()
+
+        if not output_playlist_name:
+            status_label.config(
+                text="Playlist name cannot be empty"
+            )
+            return
+
         royal_shuffle_button.config(
             state="disabled"
         )
@@ -342,6 +383,7 @@ def main():
             result = royal_shuffle(
                 client_state["client"],
                 selected_playlist,
+                output_playlist_name=output_playlist_name,
                 status_callback=update_status,
             )
 
@@ -377,9 +419,11 @@ def main():
     royal_shuffle_button.pack(pady=10)
 
     def try_saved_spotify_session():
+        log_debug("Checking for saved Spotify session")
         saved_token_data = load_token_data()
 
         if not saved_token_data:
+            log_debug("No saved Spotify session available")
             return
 
         refresh_token = saved_token_data.get(
@@ -387,6 +431,7 @@ def main():
         )
 
         if not refresh_token:
+            log_debug("Saved Spotify token data has no refresh token")
             return
 
         status_label.config(
@@ -422,6 +467,10 @@ def main():
         except Exception as exc:
             print(
                 f"Spotify automatic login failed: {exc!r}"
+            )
+            log_debug(
+                "Saved Spotify session reconnect failed:\n"
+                + traceback.format_exc()
             )
 
             status_label.config(

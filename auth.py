@@ -5,14 +5,24 @@ import secrets
 import urllib.parse
 import webbrowser
 import requests
-import subprocess
 import threading
 import json
+from datetime import datetime
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 TOKEN_FILE = Path.home() / ".royalshuffle_token.json"
-CLIENT_ID = os.environ["SPOTIFY_CLIENT_ID"]
+LOG_FILE = Path.home() / ".royalshuffle_debug.log"
+
+def log_debug(message):
+    timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
+    with LOG_FILE.open("a", encoding="utf-8") as log:
+        log.write(f"{timestamp} {message}\n")
+
+CLIENT_ID = os.environ.get(
+    "SPOTIFY_CLIENT_ID",
+    "0c1a1fa51a574e98a0cf0e62c44d0717",
+)
 
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
 
@@ -23,9 +33,11 @@ SCOPES = " ".join([
 ])
 
 def save_token_data(token_data):
+    log_debug(f"Saving token data to {TOKEN_FILE}")
     TOKEN_FILE.write_text(
         json.dumps(token_data, indent=2)
     )
+    log_debug("Token data saved successfully")
 
 class SpotifyCallbackHandler(BaseHTTPRequestHandler):
     callback_url = None
@@ -35,25 +47,39 @@ class SpotifyCallbackHandler(BaseHTTPRequestHandler):
             f"http://{self.headers['Host']}{self.path}"
         )
 
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html")
-        self.end_headers()
+        parsed = urllib.parse.urlparse(self.path)
+        query = urllib.parse.parse_qs(parsed.query)
 
-        self.wfile.write(
-            b"""
+        if "error" in query:
+            error = query["error"][0]
+            log_debug(f"Spotify callback returned OAuth error: {error}")
+            heading = "Spotify authorization was not completed."
+            detail = f"Spotify returned: {error}"
+        else:
+            log_debug("Spotify callback received authorization response")
+            heading = "Spotify authorization received."
+            detail = "RoyalShuffle is completing the connection."
+
+        html = f"""
             <html>
                 <body>
-                    <h2>RoyalShuffle connected to Spotify.</h2>
+                    <h2>{heading}</h2>
+                    <p>{detail}</p>
                     <p>You can close this browser window.</p>
                 </body>
             </html>
-            """
-        )
+        """
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(html.encode("utf-8"))
 
     def log_message(self, format, *args):
         return
 
 def wait_for_spotify_callback():
+    log_debug("Starting localhost Spotify callback listener on 127.0.0.1:8888")
     SpotifyCallbackHandler.callback_url = None
 
     server = HTTPServer(
@@ -64,7 +90,9 @@ def wait_for_spotify_callback():
     server.handle_request()
     server.server_close()
 
+    log_debug("Localhost Spotify callback listener completed")
     return SpotifyCallbackHandler.callback_url
+
 def create_code_verifier():
     return secrets.token_urlsafe(64)
 
@@ -80,6 +108,7 @@ def create_code_challenge(verifier):
 
 
 def start_authentication():
+    log_debug("Starting Spotify PKCE authentication")
     code_verifier = create_code_verifier()
     code_challenge = create_code_challenge(code_verifier)
 
@@ -100,13 +129,8 @@ def start_authentication():
         + urllib.parse.urlencode(params)
     )
 
-    subprocess.run(
-        [
-            "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-            auth_url
-        ],
-        check=False,
-    )
+    browser_opened = webbrowser.open(auth_url)
+    log_debug(f"Spotify authorization URL sent to browser; webbrowser result={browser_opened}")
 
     return {
         "auth_url": auth_url,
@@ -116,18 +140,26 @@ def start_authentication():
 
 
 def finish_authentication(callback_url, code_verifier, state):
+    log_debug("Finishing Spotify authentication")
     parsed = urllib.parse.urlparse(callback_url)
     query = urllib.parse.parse_qs(parsed.query)
 
     if "error" in query:
-        raise RuntimeError(query["error"][0])
+        error = query["error"][0]
+        log_debug(f"Spotify authorization failed before token exchange: {error}")
+        raise RuntimeError(error)
 
     returned_state = query.get("state", [None])[0]
 
     if returned_state != state:
+        log_debug("Spotify callback state mismatch")
         raise RuntimeError("State mismatch. Aborting.")
 
+    log_debug("Spotify callback state validated")
+
     code = query["code"][0]
+
+    log_debug("Requesting Spotify access token")
 
     token_response = requests.post(
         "https://accounts.spotify.com/api/token",
@@ -140,9 +172,11 @@ def finish_authentication(callback_url, code_verifier, state):
         },
     )
 
+    log_debug(f"Spotify token endpoint returned HTTP {token_response.status_code}")
     token_response.raise_for_status()
 
     token_data = token_response.json()
+    log_debug("Spotify token exchange succeeded")
 
     return token_data
 
@@ -170,14 +204,17 @@ def authenticate():
 
 def load_token_data():
     if not TOKEN_FILE.exists():
+        log_debug("No saved Spotify token file found")
         return None
 
+    log_debug(f"Loading saved Spotify token data from {TOKEN_FILE}")
     return json.loads(
         TOKEN_FILE.read_text()
     )
 
 
 def refresh_access_token(refresh_token):
+    log_debug("Refreshing Spotify access token")
     token_response = requests.post(
         "https://accounts.spotify.com/api/token",
         data={
@@ -187,12 +224,15 @@ def refresh_access_token(refresh_token):
         },
     )
 
+    log_debug(f"Spotify refresh endpoint returned HTTP {token_response.status_code}")
     token_response.raise_for_status()
 
     token_data = token_response.json()
+    log_debug("Spotify access token refresh succeeded")
 
     return token_data
 
 def clear_token_data():
     if TOKEN_FILE.exists():
+        log_debug(f"Removing saved Spotify token data from {TOKEN_FILE}")
         TOKEN_FILE.unlink()

@@ -6,6 +6,7 @@ from spotify_client import SpotifyClient
 def royal_shuffle(
     spotify, 
     source_playlist,
+    output_playlist_name=None,
     status_callback=None,
 ):
     def report_status(message):
@@ -13,7 +14,8 @@ def royal_shuffle(
             status_callback(message)
 
     source_playlist_id = source_playlist["id"]
-    output_playlist_name = f'{source_playlist["name"]} - RANDOM'
+    if output_playlist_name is None:
+        output_playlist_name = f'{source_playlist["name"]} - RANDOM'
 
     report_status("Reading source playlist...")
 
