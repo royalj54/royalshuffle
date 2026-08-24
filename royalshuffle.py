@@ -6,8 +6,8 @@ from spotify_client import SpotifyClient
 def royal_shuffle(
     spotify, 
     source_playlist,
-    output_playlist_name=None,
     status_callback=None,
+    output_playlist_name=None,
 ):
     def report_status(message):
         if status_callback:
@@ -34,6 +34,11 @@ def royal_shuffle(
     playlist = spotify.find_playlist_by_name(
         output_playlist_name
     )
+
+    if playlist and playlist["id"] == source_playlist_id:
+        raise ValueError(
+            "The output playlist cannot be the source playlist."
+        )
 
     playlist_action = "updated" if playlist else "created"
 
