@@ -82,7 +82,8 @@ class SpotifyClient:
 
         return playlists
 
-    def find_playlist_by_name(self, playlist_name):
+    def find_playlists_by_name(self, playlist_name):
+        matches = []
         url = "https://api.spotify.com/v1/me/playlists"
 
         params = {
@@ -101,12 +102,16 @@ class SpotifyClient:
 
             for playlist in data["items"]:
                 if playlist["name"] == playlist_name:
-                    return playlist
+                    matches.append(playlist)
 
             url = data.get("next")
             params = {}
 
-        return None
+        return matches
+
+    def find_playlist_by_name(self, playlist_name):
+        matches = self.find_playlists_by_name(playlist_name)
+        return matches[0] if matches else None
 
     def create_playlist(self, name, description="", public=False):
         response = requests.post(

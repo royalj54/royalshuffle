@@ -15,6 +15,7 @@ from auth import (
 
 from spotify_client import SpotifyClient
 from royalshuffle import royal_shuffle
+from playlist_registry import load_managed_playlist_ids
 from pathlib import Path
 from tkinter import simpledialog
 
@@ -38,13 +39,12 @@ def load_spotify_session(
     playlists = client.get_playlists()
     log_debug(f"Spotify playlist fetch succeeded; count={len(playlists)}")
 
+    managed_playlist_ids = load_managed_playlist_ids()
     eligible_playlists.clear()
     eligible_playlists.extend([
         playlist
         for playlist in playlists
-        if not playlist["name"].endswith(
-            " - RANDOM"
-        )
+        if playlist["id"] not in managed_playlist_ids
     ])
 
     playlist_listbox.config(state="normal")

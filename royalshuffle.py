@@ -1,5 +1,9 @@
 from auth import authenticate
 from playlist_selector import select_playlist
+from playlist_registry import (
+    add_managed_playlist_id,
+    load_managed_playlist_ids,
+)
 from shuffle_engine import shuffle_items
 from spotify_client import SpotifyClient
 
@@ -31,14 +35,22 @@ def royal_shuffle(
         f'Preparing {output_playlist_name}...'
     )
     
-    playlist = spotify.find_playlist_by_name(
+    matching_playlists = spotify.find_playlists_by_name(
         output_playlist_name
     )
+    managed_playlist_ids = load_managed_playlist_ids()
+    managed_matches = [
+        playlist
+        for playlist in matching_playlists
+        if playlist["id"] in managed_playlist_ids
+    ]
 
-    if playlist and playlist["id"] == source_playlist_id:
+    if len(managed_matches) > 1:
         raise ValueError(
-            "The output playlist cannot be the source playlist."
+            "More than one managed playlist has the requested name."
         )
+
+    playlist = managed_matches[0] if managed_matches else None
 
     playlist_action = "updated" if playlist else "created"
 
@@ -55,10 +67,16 @@ def royal_shuffle(
         )
 
         output_playlist_id = playlist["id"]
+        add_managed_playlist_id(output_playlist_id)
 
     report_status(
         f'Updating {output_playlist_name}...'
     )
+
+    if output_playlist_id == source_playlist_id:
+        raise ValueError(
+            "The output playlist cannot be the source playlist."
+        )
 
     spotify.clear_playlist(output_playlist_id)
     
@@ -97,10 +115,11 @@ def main():
     print("Loading your Spotify playlists...")
     print()
 
+    managed_playlist_ids = load_managed_playlist_ids()
     playlists = [
         playlist
         for playlist in spotify.get_playlists()
-        if not playlist["name"].endswith(" - RANDOM")
+        if playlist["id"] not in managed_playlist_ids
     ]
 
     if not playlists:
