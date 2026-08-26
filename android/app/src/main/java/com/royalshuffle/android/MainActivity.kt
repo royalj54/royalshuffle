@@ -12,6 +12,8 @@ import com.royalshuffle.android.auth.AuthViewModel
 import com.royalshuffle.android.auth.createSpotifyAuthRepository
 import com.royalshuffle.android.playlist.PlaylistViewModel
 import com.royalshuffle.android.playlist.createPlaylistRepository
+import com.royalshuffle.android.output.OutputViewModel
+import com.royalshuffle.android.output.createOutputPlaylistUseCase
 import com.royalshuffle.android.ui.RoyalShuffleApp
 
 class MainActivity : ComponentActivity() {
@@ -26,6 +28,11 @@ class MainActivity : ComponentActivity() {
             createPlaylistRepository(applicationContext, authRepository),
         )
     }
+    private val outputViewModel: OutputViewModel by viewModels {
+        OutputViewModel.factory(
+            createOutputPlaylistUseCase(applicationContext, authRepository),
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,6 +42,7 @@ class MainActivity : ComponentActivity() {
             RoyalShuffleApp(
                 authViewModel = authViewModel,
                 playlistViewModel = playlistViewModel,
+                outputViewModel = outputViewModel,
                 openAuthorizationUrl = ::openAuthorizationUrl,
             )
         }

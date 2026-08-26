@@ -25,6 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.royalshuffle.android.auth.AuthUiState
 import com.royalshuffle.android.auth.AuthViewModel
+import com.royalshuffle.android.domain.model.Playlist
+import com.royalshuffle.android.output.OutputUiState
+import com.royalshuffle.android.output.OutputViewModel
 import com.royalshuffle.android.playlist.PlaylistUiState
 import com.royalshuffle.android.playlist.PlaylistViewModel
 import com.royalshuffle.android.ui.theme.RoyalShuffleTheme
@@ -33,10 +36,12 @@ import com.royalshuffle.android.ui.theme.RoyalShuffleTheme
 fun RoyalShuffleApp(
     authViewModel: AuthViewModel,
     playlistViewModel: PlaylistViewModel,
+    outputViewModel: OutputViewModel,
     openAuthorizationUrl: (String) -> Unit,
 ) {
     val authState by authViewModel.uiState.collectAsState()
     val playlistState by playlistViewModel.uiState.collectAsState()
+    val outputState by outputViewModel.uiState.collectAsState()
 
     LaunchedEffect(authViewModel) {
         authViewModel.authorizationRequests.collect(openAuthorizationUrl)
@@ -47,6 +52,13 @@ fun RoyalShuffleApp(
             playlistViewModel.loadPlaylists()
         } else {
             playlistViewModel.clear()
+            outputViewModel.clear()
+        }
+    }
+
+    LaunchedEffect(outputState) {
+        if (outputState is OutputUiState.Success) {
+            playlistViewModel.loadPlaylists()
         }
     }
 
@@ -80,6 +92,8 @@ fun RoyalShuffleApp(
                         state = playlistState,
                         onRetry = playlistViewModel::loadPlaylists,
                         onSelect = playlistViewModel::selectPlaylist,
+                        outputState = outputState,
+                        onCreateOutput = outputViewModel::create,
                     )
                 }
             }
@@ -92,6 +106,8 @@ private fun ColumnScope.PlaylistControls(
     state: PlaylistUiState,
     onRetry: () -> Unit,
     onSelect: (String) -> Unit,
+    outputState: OutputUiState,
+    onCreateOutput: (Playlist) -> Unit,
 ) {
     when (state) {
         PlaylistUiState.Idle,
@@ -120,6 +136,9 @@ private fun ColumnScope.PlaylistControls(
         }
 
         is PlaylistUiState.Content -> {
+            val selectedPlaylist = state.playlists.firstOrNull {
+                it.id == state.selectedPlaylistId
+            }
             Text(
                 text = "Choose a playlist",
                 style = MaterialTheme.typography.titleMedium,
@@ -146,6 +165,50 @@ private fun ColumnScope.PlaylistControls(
                             .clickable { onSelect(playlist.id) },
                     )
                 }
+            }
+            Button(
+                onClick = { selectedPlaylist?.let(onCreateOutput) },
+                enabled = selectedPlaylist != null && outputState !is OutputUiState.Working,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
+            ) {
+                Text("Create shuffled playlist")
+            }
+            OutputStatus(outputState, selectedPlaylist, onCreateOutput)
+        }
+    }
+}
+
+@Composable
+private fun OutputStatus(
+    state: OutputUiState,
+    selectedPlaylist: Playlist?,
+    onCreateOutput: (Playlist) -> Unit,
+) {
+    when (state) {
+        OutputUiState.Idle -> Unit
+        is OutputUiState.Working -> {
+            CircularProgressIndicator(modifier = Modifier.padding(top = 12.dp))
+            Text(state.message, modifier = Modifier.padding(top = 8.dp))
+        }
+        is OutputUiState.Success -> Text(
+            "Created ${state.playlistName} with ${state.itemCount} items.",
+            modifier = Modifier.padding(top = 12.dp),
+            color = MaterialTheme.colorScheme.primary,
+        )
+        is OutputUiState.Error -> {
+            Text(
+                state.message,
+                modifier = Modifier.padding(top = 12.dp),
+                color = MaterialTheme.colorScheme.error,
+            )
+            Button(
+                onClick = { selectedPlaylist?.let(onCreateOutput) },
+                enabled = selectedPlaylist != null,
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                Text("Try again")
             }
         }
     }
