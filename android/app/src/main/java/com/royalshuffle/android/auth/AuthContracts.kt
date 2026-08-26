@@ -31,3 +31,7 @@ interface PkceProvider {
     fun createPendingAuthorization(): PendingAuthorization
     fun createCodeChallenge(codeVerifier: String): String
 }
+
+fun interface AccessTokenProvider {
+    suspend fun getValidAccessToken(): String?
+}

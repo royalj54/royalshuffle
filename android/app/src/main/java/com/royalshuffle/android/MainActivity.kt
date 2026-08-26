@@ -9,11 +9,22 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.browser.customtabs.CustomTabsIntent
 import com.royalshuffle.android.auth.AuthViewModel
+import com.royalshuffle.android.auth.createSpotifyAuthRepository
+import com.royalshuffle.android.playlist.PlaylistViewModel
+import com.royalshuffle.android.playlist.createPlaylistRepository
 import com.royalshuffle.android.ui.RoyalShuffleApp
 
 class MainActivity : ComponentActivity() {
+    private val authRepository by lazy {
+        createSpotifyAuthRepository(applicationContext)
+    }
     private val authViewModel: AuthViewModel by viewModels {
-        AuthViewModel.factory(applicationContext)
+        AuthViewModel.factory(authRepository)
+    }
+    private val playlistViewModel: PlaylistViewModel by viewModels {
+        PlaylistViewModel.factory(
+            createPlaylistRepository(applicationContext, authRepository),
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -23,6 +34,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             RoyalShuffleApp(
                 authViewModel = authViewModel,
+                playlistViewModel = playlistViewModel,
                 openAuthorizationUrl = ::openAuthorizationUrl,
             )
         }

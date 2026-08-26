@@ -13,7 +13,7 @@ class SpotifyAuthRepository(
     private val tokenClient: TokenEndpointClient,
     private val pkceProvider: PkceProvider,
     private val clock: EpochClock,
-) {
+) : AccessTokenProvider {
     fun beginAuthorization(): String {
         if (clientId.isBlank()) {
             throw AuthException(AuthException.Reason.CONFIGURATION_MISSING)
@@ -34,19 +34,21 @@ class SpotifyAuthRepository(
         return "https://accounts.spotify.com/authorize?" + parameters.toQueryString()
     }
 
-    suspend fun restoreSession(): Boolean {
-        val session = storage.loadSession() ?: return false
+    suspend fun restoreSession(): Boolean = getValidAccessToken() != null
+
+    override suspend fun getValidAccessToken(): String? {
+        val session = storage.loadSession() ?: return null
         if (session.expiresAtEpochSeconds > clock.nowSeconds() + EXPIRY_SKEW_SECONDS) {
-            return true
+            return session.accessToken
         }
 
         return try {
             refresh(session)
-            true
+            storage.loadSession()?.accessToken
         } catch (error: TokenEndpointException) {
             if (error.errorCode == "invalid_grant") {
                 storage.clearSession()
-                false
+                null
             } else {
                 throw AuthException(AuthException.Reason.NETWORK)
             }

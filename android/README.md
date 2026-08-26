@@ -5,8 +5,9 @@ Native Android prototype built with Kotlin and Jetpack Compose.
 ## Current scope
 
 The prototype provides a launchable application shell, foundational domain
-models, the True Random shuffle implementation, and Spotify Authorization Code
-with PKCE. Playlist Web API operations are intentionally not implemented yet.
+models, the True Random shuffle implementation, Spotify Authorization Code
+with PKCE, and eligible-playlist loading and selection. Playlist item and
+shuffle-output Web API operations are intentionally not implemented yet.
 
 ## Package structure
 
@@ -14,7 +15,8 @@ with PKCE. Playlist Web API operations are intentionally not implemented yet.
 - `domain/shuffle`: True Random behavior.
 - `auth`: PKCE, session orchestration, and UI-facing authentication state.
 - `data/local`: app-private authentication persistence.
-- `data/remote`: Spotify token endpoint access.
+- `data/remote`: Spotify token and current-user playlist endpoint access.
+- `playlist`: playlist pagination, filtering, selection, and UI state.
 - `ui`: Compose application shell and theme.
 
 ## Spotify prototype configuration
