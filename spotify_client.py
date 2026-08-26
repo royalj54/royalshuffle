@@ -9,6 +9,7 @@ class SpotifyClient:
 
     def get_playlist_items(self, playlist_id):
         items = []
+        playlist_position = 0
 
         url = (
             f"https://api.spotify.com/v1/playlists/"
@@ -30,6 +31,7 @@ class SpotifyClient:
             data = response.json()
 
             for entry in data["items"]:
+                playlist_position += 1
                 item = entry.get("item")
 
                 if not item:
@@ -44,11 +46,23 @@ class SpotifyClient:
                     artist["name"]
                     for artist in item.get("artists", [])
                 )
+                album = item.get("album") or {}
+                added_by = entry.get("added_by") or {}
+                external_urls = item.get("external_urls") or {}
 
                 items.append({
                     "uri": uri,
                     "name": item.get("name", "Unknown"),
                     "artists": artists,
+                    "playlist_position": playlist_position,
+                    "album": album.get("name", ""),
+                    "duration_ms": item.get("duration_ms"),
+                    "spotify_url": external_urls.get("spotify", ""),
+                    "date_added": entry.get("added_at", ""),
+                    "added_by": added_by.get("id", ""),
+                    "disc_number": item.get("disc_number"),
+                    "track_number": item.get("track_number"),
+                    "explicit": item.get("explicit", False),
                 })
 
             url = data.get("next")
