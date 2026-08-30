@@ -1,4 +1,4 @@
-from auth import authenticate
+from auth import authenticate, log_debug
 from playlist_selector import select_playlist
 from playlist_registry import (
     add_managed_playlist_id,
@@ -24,6 +24,9 @@ def royal_shuffle(
     report_status("Reading source playlist...")
 
     items = spotify.get_playlist_items(source_playlist_id)
+    log_debug(
+        f"RoyalShuffle source item count={len(items)}"
+    )
     
     report_status(
         f'Shuffling {len(items)} items...'
