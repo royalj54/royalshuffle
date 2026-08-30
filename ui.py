@@ -474,6 +474,10 @@ def main():
             print(
                 f"Royal Shuffle failed: {exc!r}"
             )
+            log_debug(
+                "Royal Shuffle failed; "
+                f"exception_type={type(exc).__name__}"
+            )
 
             status_label.config(
                 text="Royal Shuffle failed. Please try again."
