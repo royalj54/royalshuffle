@@ -27,6 +27,27 @@ def royal_shuffle(
     log_debug(
         f"RoyalShuffle source item count={len(items)}"
     )
+
+    copyable_items = [
+        item
+        for item in items
+        if not item.get("is_local", False)
+        and not item["uri"].startswith("spotify:local:")
+    ]
+    skipped_item_count = len(items) - len(copyable_items)
+    log_debug(
+        "RoyalShuffle local item filtering complete; "
+        f"copyable_items={len(copyable_items)}; "
+        f"skipped_local_items={skipped_item_count}"
+    )
+
+    if skipped_item_count:
+        report_status(
+            f"Skipping {skipped_item_count} local Spotify "
+            "items that cannot be copied..."
+        )
+
+    items = copyable_items
     
     report_status(
         f'Shuffling {len(items)} items...'
@@ -102,6 +123,7 @@ def royal_shuffle(
         "name": output_playlist_name,
         "id": output_playlist_id,
         "item_count": len(uris),
+        "skipped_item_count": skipped_item_count,
         "action": playlist_action,
     }
 
@@ -151,6 +173,12 @@ def main():
         f'"{result["name"]}" now contains '
         f'{result["item_count"]} items in true-random order.'
     )
+
+    if result["skipped_item_count"]:
+        print(
+            f'{result["skipped_item_count"]} local Spotify items '
+            "were skipped because they cannot be copied."
+        )
 
     print()
     print("Leave Spotify Shuffle OFF when playing it.")

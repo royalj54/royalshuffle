@@ -14,7 +14,7 @@ from auth import (
     log_debug,
 )
 
-from spotify_client import SpotifyClient
+from spotify_client import SpotifyClient, SpotifyRetryLaterError
 from playlist_export import export_playlist_csv
 from royalshuffle import royal_shuffle
 from playlist_registry import (
@@ -224,6 +224,14 @@ def connect_spotify(
                 export_csv_button,
             )
             log_debug("Spotify connection completed successfully")
+
+        except SpotifyRetryLaterError as exc:
+            log_debug(
+                "Spotify connection deferred; "
+                f"exception_type={type(exc).__name__}"
+            )
+            status_label.config(text=str(exc))
+            connect_button.config(state="normal")
 
         except Exception as exc:
             print(
@@ -467,8 +475,20 @@ def main():
                     f'{result["action"].title()}: '
                     f'{result["name"]} '
                     f' • {result["item_count"]} items'
+                    + (
+                        f' • {result["skipped_item_count"]} local skipped'
+                        if result["skipped_item_count"]
+                        else ""
+                    )
                 )
             )
+
+        except SpotifyRetryLaterError as exc:
+            log_debug(
+                "Royal Shuffle deferred by Spotify; "
+                f"exception_type={type(exc).__name__}"
+            )
+            status_label.config(text=str(exc))
 
         except Exception as exc:
             print(
@@ -540,6 +560,12 @@ def main():
                     f"{destination}"
                 )
             )
+        except SpotifyRetryLaterError as exc:
+            log_debug(
+                "CSV export deferred by Spotify; "
+                f"exception_type={type(exc).__name__}"
+            )
+            status_label.config(text=str(exc))
         except Exception as exc:
             print(f"CSV export failed: {exc!r}")
             status_label.config(
@@ -603,6 +629,14 @@ def main():
                 royal_shuffle_button,
                 export_csv_button,
             )
+
+        except SpotifyRetryLaterError as exc:
+            log_debug(
+                "Saved Spotify session reconnect deferred; "
+                f"exception_type={type(exc).__name__}"
+            )
+            status_label.config(text=str(exc))
+            connect_button.config(state="normal")
 
         except Exception as exc:
             print(

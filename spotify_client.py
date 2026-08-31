@@ -1,3 +1,4 @@
+import math
 import time
 
 import requests
@@ -5,11 +6,14 @@ import requests
 from auth import log_debug
 
 
-PACING_OPERATION_INTERVAL = 20
-PACING_PAUSE_SECONDS = 1
 # Used only when Spotify rate-limits a request without a usable delay.
 RATE_LIMIT_FALLBACK_SECONDS = 1
+MAX_AUTOMATIC_RETRY_AFTER_SECONDS = 60
 MAX_RATE_LIMIT_RETRIES = 3
+
+
+class SpotifyRetryLaterError(Exception):
+    pass
 
 
 class SpotifyClient:
@@ -17,6 +21,41 @@ class SpotifyClient:
         self.headers = {
             "Authorization": f"Bearer {access_token}"
         }
+
+    def _rate_limit_reason(self, response):
+        try:
+            payload = response.json()
+        except (TypeError, ValueError):
+            return None
+
+        if not isinstance(payload, dict):
+            return None
+
+        error = payload.get("error")
+        containers = [error, payload]
+
+        for container in containers:
+            if not isinstance(container, dict):
+                continue
+
+            for key in ("reason", "category"):
+                value = container.get(key)
+
+                if isinstance(value, str) and value.strip():
+                    return value.strip().upper()
+
+        return None
+
+    def _retry_after_delay(self, retry_after):
+        try:
+            delay = float(retry_after)
+        except (TypeError, ValueError):
+            return RATE_LIMIT_FALLBACK_SECONDS
+
+        if not math.isfinite(delay) or delay < 0:
+            return RATE_LIMIT_FALLBACK_SECONDS
+
+        return delay
 
     def _request(self, method, url, operation, **kwargs):
         retry_count = 0
@@ -38,13 +77,37 @@ class SpotifyClient:
                 break
 
             retry_after = response.headers.get("Retry-After")
+            rate_limit_reason = self._rate_limit_reason(response)
+
+            log_debug(
+                f"Spotify {operation} returned HTTP 429; "
+                f"reason={rate_limit_reason!r}; "
+                f"Retry-After={retry_after!r}"
+            )
+
+            if rate_limit_reason == "QUOTA_EXCEEDED":
+                raise SpotifyRetryLaterError(
+                    "Spotify's API quota is currently exhausted. "
+                    "Please try again later."
+                )
+
+            delay = self._retry_after_delay(retry_after)
+
+            if delay > MAX_AUTOMATIC_RETRY_AFTER_SECONDS:
+                raise SpotifyRetryLaterError(
+                    "Spotify asked RoyalShuffle to wait too long to "
+                    "retry automatically. Please try again later."
+                )
 
             if retry_count >= MAX_RATE_LIMIT_RETRIES:
                 log_debug(
                     f"Spotify {operation} returned HTTP 429; "
                     f"Retry-After={retry_after!r}; retries_exhausted"
                 )
-                break
+                raise SpotifyRetryLaterError(
+                    "Spotify is still limiting requests. "
+                    "Please try again later."
+                )
 
             retry_count += 1
             log_debug(
@@ -52,11 +115,6 @@ class SpotifyClient:
                 f"Retry-After={retry_after!r}; "
                 f"retry={retry_count}/{MAX_RATE_LIMIT_RETRIES}"
             )
-
-            try:
-                delay = max(float(retry_after), 0)
-            except (TypeError, ValueError):
-                delay = RATE_LIMIT_FALLBACK_SECONDS
 
             time.sleep(delay)
 
@@ -73,18 +131,6 @@ class SpotifyClient:
             raise
 
         return response
-
-    def _pace_bulk_operation(self, operation_count, has_more):
-        if (
-            has_more
-            and operation_count % PACING_OPERATION_INTERVAL == 0
-        ):
-            log_debug(
-                "Pacing bulk Spotify playlist operation; "
-                f"operations_completed={operation_count}; "
-                f"pause_seconds={PACING_PAUSE_SECONDS}"
-            )
-            time.sleep(PACING_PAUSE_SECONDS)
 
     def get_playlist_items(self, playlist_id):
         items = []
@@ -153,15 +199,15 @@ class SpotifyClient:
                     "disc_number": item.get("disc_number"),
                     "track_number": item.get("track_number"),
                     "explicit": item.get("explicit", False),
+                    "is_local": bool(
+                        entry.get("is_local")
+                        or item.get("is_local")
+                        or uri.startswith("spotify:local:")
+                    ),
                 })
 
             url = data.get("next")
             params = {}
-
-            self._pace_bulk_operation(
-                page_number,
-                has_more=bool(url),
-            )
 
         log_debug(
             "Completed Spotify playlist item fetch; "
@@ -311,11 +357,6 @@ class SpotifyClient:
                 raise
 
             items_written += len(batch)
-
-            self._pace_bulk_operation(
-                batch_number,
-                has_more=batch_number < total_batches,
-            )
 
         log_debug(
             "Completed Spotify playlist population; "

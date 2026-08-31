@@ -13,7 +13,8 @@ except ModuleNotFoundError:
     requests.put = Mock()
     sys.modules["requests"] = requests
 
-from spotify_client import SpotifyClient
+from spotify_client import SpotifyClient, SpotifyRetryLaterError
+from royalshuffle import royal_shuffle
 
 
 def response(status_code=201, retry_after=None, payload=None):
@@ -40,69 +41,10 @@ class SpotifyClientTests(unittest.TestCase):
         self.client = SpotifyClient("test-token")
 
     @patch("spotify_client.log_debug")
-    @patch("spotify_client.time.sleep")
-    @patch("spotify_client.requests.post")
-    def test_nineteen_write_batches_are_not_paced(
-        self,
-        post,
-        sleep,
-        _log_debug,
-    ):
-        post.return_value = response()
-
-        self.client.add_playlist_items(
-            "playlist-id",
-            ["uri"] * 1900,
-        )
-
-        self.assertEqual(post.call_count, 19)
-        sleep.assert_not_called()
-
-    @patch("spotify_client.log_debug")
-    @patch("spotify_client.time.sleep")
-    @patch("spotify_client.requests.post")
-    def test_twenty_write_batches_with_no_more_work_are_not_paced(
-        self,
-        post,
-        sleep,
-        _log_debug,
-    ):
-        post.return_value = response()
-
-        self.client.add_playlist_items(
-            "playlist-id",
-            ["uri"] * 2000,
-        )
-
-        self.assertEqual(post.call_count, 20)
-        sleep.assert_not_called()
-
-    @patch("spotify_client.log_debug")
-    @patch("spotify_client.time.sleep")
-    @patch("spotify_client.requests.post")
-    def test_twenty_completed_write_batches_with_more_work_are_paced(
-        self,
-        post,
-        sleep,
-        _log_debug,
-    ):
-        post.return_value = response()
-
-        self.client.add_playlist_items(
-            "playlist-id",
-            ["uri"] * 2001,
-        )
-
-        self.assertEqual(post.call_count, 21)
-        self.assertEqual(sleep.call_args_list, [call(1)])
-
-    @patch("spotify_client.log_debug")
-    @patch("spotify_client.time.sleep")
     @patch("spotify_client.requests.get")
-    def test_twenty_completed_read_pages_with_more_work_are_paced(
+    def test_playlist_item_fetch_logs_page_count(
         self,
         get,
-        sleep,
         log_debug,
     ):
         get.side_effect = [
@@ -110,27 +52,29 @@ class SpotifyClientTests(unittest.TestCase):
                 200,
                 payload={
                     "items": [],
-                    "next": (
-                        f"next-page-{page + 1}"
-                        if page < 21
-                        else None
-                    ),
-                    "total": 2001,
+                    "next": "next-page",
+                    "total": 0,
                 },
-            )
-            for page in range(1, 22)
+            ),
+            response(
+                200,
+                payload={
+                    "items": [],
+                    "next": None,
+                    "total": 0,
+                },
+            ),
         ]
 
         self.client.get_playlist_items("playlist-id")
 
-        self.assertEqual(get.call_count, 21)
-        self.assertEqual(sleep.call_args_list, [call(1)])
+        self.assertEqual(get.call_count, 2)
         messages = [
             args[0]
             for args, _kwargs in log_debug.call_args_list
         ]
         self.assertTrue(any(
-            "items=0; pages=21" in message
+            "items=0; pages=2" in message
             for message in messages
         ))
 
@@ -159,6 +103,82 @@ class SpotifyClientTests(unittest.TestCase):
     @patch("spotify_client.log_debug")
     @patch("spotify_client.time.sleep")
     @patch("spotify_client.requests.post")
+    def test_quota_exceeded_does_not_sleep_or_retry(
+        self,
+        post,
+        sleep,
+        _log_debug,
+    ):
+        post.return_value = response(
+            429,
+            retry_after="2",
+            payload={
+                "error": {
+                    "category": "QUOTA_EXCEEDED",
+                }
+            },
+        )
+
+        with self.assertRaisesRegex(
+            SpotifyRetryLaterError,
+            "quota is currently exhausted",
+        ):
+            self.client.add_playlist_items(
+                "playlist-id",
+                ["uri"] * 100,
+            )
+
+        post.assert_called_once()
+        sleep.assert_not_called()
+
+    @patch("spotify_client.log_debug")
+    @patch("spotify_client.time.sleep")
+    @patch("spotify_client.requests.post")
+    def test_long_retry_after_does_not_sleep_or_retry(
+        self,
+        post,
+        sleep,
+        _log_debug,
+    ):
+        post.return_value = response(429, retry_after="61")
+
+        with self.assertRaisesRegex(
+            SpotifyRetryLaterError,
+            "wait too long",
+        ):
+            self.client.add_playlist_items(
+                "playlist-id",
+                ["uri"] * 100,
+            )
+
+        post.assert_called_once()
+        sleep.assert_not_called()
+
+    @patch("spotify_client.log_debug")
+    @patch("spotify_client.time.sleep")
+    @patch("spotify_client.requests.post")
+    def test_sixty_second_retry_after_is_honored(
+        self,
+        post,
+        sleep,
+        _log_debug,
+    ):
+        post.side_effect = [
+            response(429, retry_after="60"),
+            response(),
+        ]
+
+        self.client.add_playlist_items(
+            "playlist-id",
+            ["uri"] * 100,
+        )
+
+        self.assertEqual(post.call_count, 2)
+        sleep.assert_called_once_with(60)
+
+    @patch("spotify_client.log_debug")
+    @patch("spotify_client.time.sleep")
+    @patch("spotify_client.requests.post")
     def test_rate_limit_uses_fallback_for_invalid_retry_after(
         self,
         post,
@@ -181,6 +201,25 @@ class SpotifyClientTests(unittest.TestCase):
     @patch("spotify_client.log_debug")
     @patch("spotify_client.time.sleep")
     @patch("spotify_client.requests.post")
+    def test_rate_limit_uses_fallback_when_retry_after_is_missing(
+        self,
+        post,
+        sleep,
+        _log_debug,
+    ):
+        post.side_effect = [response(429), response()]
+
+        self.client.add_playlist_items(
+            "playlist-id",
+            ["uri"] * 100,
+        )
+
+        self.assertEqual(post.call_count, 2)
+        sleep.assert_called_once_with(1)
+
+    @patch("spotify_client.log_debug")
+    @patch("spotify_client.time.sleep")
+    @patch("spotify_client.requests.post")
     def test_rate_limit_stops_after_three_retries(
         self,
         post,
@@ -189,7 +228,7 @@ class SpotifyClientTests(unittest.TestCase):
     ):
         post.side_effect = [response(429, retry_after="2")] * 4
 
-        with self.assertRaises(requests.HTTPError):
+        with self.assertRaises(SpotifyRetryLaterError):
             self.client.add_playlist_items(
                 "playlist-id",
                 ["uri"] * 100,
@@ -238,6 +277,61 @@ class SpotifyClientTests(unittest.TestCase):
             "items_written=100" in message
             and "exception_type=HTTPError" in message
             for message in messages
+        ))
+
+
+class RoyalShuffleWorkflowTests(unittest.TestCase):
+    @patch("royalshuffle.add_managed_playlist_id")
+    @patch("royalshuffle.load_managed_playlist_ids", return_value=set())
+    @patch("royalshuffle.shuffle_items", side_effect=lambda items: items)
+    @patch("royalshuffle.log_debug")
+    def test_local_items_are_skipped_before_population(
+        self,
+        _log_debug,
+        _shuffle_items,
+        _load_managed_playlist_ids,
+        _add_managed_playlist_id,
+    ):
+        spotify = Mock()
+        spotify.get_playlist_items.return_value = [
+            {
+                "uri": "spotify:track:copyable",
+                "is_local": False,
+            },
+            {
+                "uri": "spotify:episode:copyable",
+                "is_local": False,
+            },
+            {
+                "uri": "spotify:local:artist:album:track:123",
+                "is_local": True,
+            },
+            {
+                "uri": "spotify:local:other:album:track:456",
+            },
+        ]
+        spotify.find_playlists_by_name.return_value = []
+        spotify.create_playlist.return_value = {"id": "output-id"}
+        status_messages = []
+
+        result = royal_shuffle(
+            spotify,
+            {"id": "source-id", "name": "Source"},
+            status_callback=status_messages.append,
+        )
+
+        spotify.add_playlist_items.assert_called_once_with(
+            "output-id",
+            [
+                "spotify:track:copyable",
+                "spotify:episode:copyable",
+            ],
+        )
+        self.assertEqual(result["item_count"], 2)
+        self.assertEqual(result["skipped_item_count"], 2)
+        self.assertTrue(any(
+            "Skipping 2 local Spotify items" in message
+            for message in status_messages
         ))
 
 
