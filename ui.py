@@ -38,6 +38,23 @@ LEGACY_PLAYLIST_DESCRIPTION = (
 OPEN_FOLDER_ERROR_MESSAGE = (
     "RoyalShuffle couldn't open its folder. Please try again."
 )
+WINDOW_ICON_RELATIVE_PATH = Path("assets") / "royalshuffle.ico"
+
+
+def application_asset_path(relative_path):
+    return Path(__file__).resolve().parent / relative_path
+
+
+def configure_window_icon(root):
+    try:
+        root.iconbitmap(
+            str(application_asset_path(WINDOW_ICON_RELATIVE_PATH))
+        )
+    except Exception as exc:
+        log_debug(
+            "RoyalShuffle window icon could not be loaded; "
+            f"exception_type={type(exc).__name__}"
+        )
 
 
 def application_version_text():
@@ -433,6 +450,7 @@ def connect_spotify(
 
 def main():
     root = tk.Tk()
+    configure_window_icon(root)
     root.title("RoyalShuffle")
     root.geometry()
     root.minsize(500, 500)
