@@ -11,13 +11,43 @@ from datetime import datetime
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+from app_paths import ensure_diagnostics_folder
+
 TOKEN_FILE = Path.home() / ".royalshuffle_token.json"
-LOG_FILE = Path.home() / ".royalshuffle_debug.log"
+LEGACY_LOG_FILE = Path.home() / ".royalshuffle_debug.log"
+_active_debug_log_file = None
+
+
+def _get_debug_log_file():
+    global _active_debug_log_file
+
+    if _active_debug_log_file is None:
+        diagnostics_directory = ensure_diagnostics_folder()
+        if diagnostics_directory is None:
+            _active_debug_log_file = LEGACY_LOG_FILE
+        else:
+            _active_debug_log_file = (
+                diagnostics_directory / "royalshuffle_debug.log"
+            )
+
+    return _active_debug_log_file
 
 def log_debug(message):
+    global _active_debug_log_file
+
     timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
-    with LOG_FILE.open("a", encoding="utf-8") as log:
-        log.write(f"{timestamp} {message}\n")
+    log_line = f"{timestamp} {message}\n"
+
+    try:
+        with _get_debug_log_file().open("a", encoding="utf-8") as log:
+            log.write(log_line)
+    except OSError:
+        _active_debug_log_file = LEGACY_LOG_FILE
+        try:
+            with LEGACY_LOG_FILE.open("a", encoding="utf-8") as log:
+                log.write(log_line)
+        except OSError:
+            return
 
 CLIENT_ID = os.environ.get(
     "SPOTIFY_CLIENT_ID",
