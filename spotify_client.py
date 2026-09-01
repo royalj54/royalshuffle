@@ -16,6 +16,12 @@ class SpotifyRetryLaterError(Exception):
     pass
 
 
+class SpotifyTrackNotFoundError(Exception):
+    def __init__(self, track_id):
+        self.track_id = track_id
+        super().__init__("Spotify track was not found")
+
+
 class SpotifyClient:
     def __init__(self, access_token):
         self.headers = {
@@ -216,6 +222,22 @@ class SpotifyClient:
 
         return items
 
+    def get_track(self, track_id):
+        try:
+            response = self._request(
+                "get",
+                f"https://api.spotify.com/v1/tracks/{track_id}",
+                "track catalog lookup",
+                headers=self.headers,
+            )
+        except Exception as exc:
+            response = getattr(exc, "response", None)
+            if getattr(response, "status_code", None) == 404:
+                raise SpotifyTrackNotFoundError(track_id) from exc
+            raise
+
+        return response.json()
+
     def get_playlists(self):
         playlists = []
 
@@ -354,6 +376,9 @@ class SpotifyClient:
                     f"items_written={items_written}; "
                     f"exception_type={type(exc).__name__}"
                 )
+                exc.playlist_id = playlist_id
+                exc.items_written = items_written
+                exc.total_items = len(uris)
                 raise
 
             items_written += len(batch)
@@ -362,3 +387,5 @@ class SpotifyClient:
             "Completed Spotify playlist population; "
             f"batches={total_batches}; items_written={items_written}"
         )
+
+        return items_written

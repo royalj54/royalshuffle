@@ -19,6 +19,16 @@ from auth import (
 
 from spotify_client import SpotifyClient, SpotifyRetryLaterError
 from playlist_export import export_playlist_csv
+from playlist_import import (
+    PlaylistImportValidationError,
+    parse_playlist_csv,
+)
+from playlist_import_workflow import (
+    CatalogValidationError,
+    PlaylistImportPartialWriteError,
+    create_imported_playlist,
+    preflight_playlist_import,
+)
 from royalshuffle import royal_shuffle
 from playlist_registry import (
     add_managed_playlist_id,
@@ -178,6 +188,114 @@ def choose_csv_destination(parent, playlist_name):
     return filedialog.asksaveasfilename(**dialog_options)
 
 
+def choose_csv_source(parent):
+    return filedialog.askopenfilename(
+        title="Import playlist from CSV",
+        filetypes=[
+            ("CSV files", "*.csv"),
+            ("All files", "*.*"),
+        ],
+        parent=parent,
+    )
+
+
+def _format_import_issues(issues):
+    lines = []
+    for issue in issues:
+        location = (
+            f"Row {issue.line_number}"
+            if issue.line_number is not None
+            else "CSV"
+        )
+        lines.append(f"{location}: {issue.message}")
+    return "\n".join(lines)
+
+
+def import_csv_playlist(parent, spotify, status_label, import_button):
+    source = choose_csv_source(parent)
+    if not source:
+        return None
+
+    import_button.config(state="disabled")
+    status_label.config(text="Validating CSV import...")
+    parent.update_idletasks()
+
+    try:
+        rows = parse_playlist_csv(source)
+        prepared_import = preflight_playlist_import(spotify, rows)
+        status_label.config(
+            text=f"{len(rows)} tracks found, {len(rows)} valid"
+        )
+        parent.update_idletasks()
+
+        playlist_name = simpledialog.askstring(
+            "Import CSV",
+            "Name your imported playlist:",
+            parent=parent,
+        )
+        if playlist_name is None:
+            return None
+
+        playlist_name = playlist_name.strip()
+        if not playlist_name:
+            status_label.config(text="Playlist name cannot be empty")
+            return None
+
+        status_label.config(text=f"Creating: {playlist_name}...")
+        parent.update_idletasks()
+        result = create_imported_playlist(
+            spotify,
+            prepared_import,
+            playlist_name,
+        )
+        status_label.config(
+            text=f"Created: {result.name} • {result.item_count} tracks"
+        )
+        return result
+    except (PlaylistImportValidationError, CatalogValidationError) as exc:
+        messagebox.showerror(
+            "CSV Import Validation",
+            _format_import_issues(exc.issues),
+            parent=parent,
+        )
+        status_label.config(
+            text=f"CSV import found {len(exc.issues)} invalid row(s)"
+        )
+        return None
+    except PlaylistImportPartialWriteError as exc:
+        status_label.config(
+            text=(
+                f"Partially created: {exc.playlist_name} • "
+                f"{exc.items_written}/{exc.total_items} tracks added"
+            )
+        )
+        messagebox.showerror(
+            "CSV Import Incomplete",
+            (
+                f'Playlist "{exc.playlist_name}" was partially created.\n\n'
+                f"{exc.items_written} of {exc.total_items} tracks were added. "
+                "The remaining tracks were not added. The partial private "
+                "playlist was left in Spotify."
+            ),
+            parent=parent,
+        )
+        return None
+    except SpotifyRetryLaterError as exc:
+        status_label.config(text=str(exc))
+        return None
+    except Exception as exc:
+        log_debug(
+            "CSV import operational failure; "
+            f"exception_type={type(exc).__name__}"
+        )
+        status_label.config(
+            text="CSV import failed. No playlist was created."
+        )
+        return None
+    finally:
+        import_button.config(state="normal")
+
+
 def open_royalshuffle_folder(parent):
     folder = ensure_royalshuffle_folder()
     if folder is None:
@@ -214,6 +332,18 @@ def create_open_folder_button(parent):
         command=lambda: open_royalshuffle_folder(parent),
     )
     button.place(relx=1.0, x=-10, y=10, anchor="ne")
+    return button
+
+
+def create_import_csv_button(parent, command):
+    button = tk.Button(
+        parent,
+        text="Import CSV...",
+        width=20,
+        state="disabled",
+        command=command,
+    )
+    button.pack(side="left", padx=5)
     return button
 
 
@@ -260,6 +390,7 @@ def load_spotify_session(
     selected_playlist_state,
     royal_shuffle_button,
     export_csv_button,
+    import_csv_button,
 ):
     log_debug("Creating Spotify client session")
     client = SpotifyClient(access_token)
@@ -283,6 +414,7 @@ def load_spotify_session(
     ])
 
     playlist_listbox.config(state="normal")
+    import_csv_button.config(state="normal")
     playlist_listbox.delete(0, tk.END)
 
     for playlist in eligible_playlists:
@@ -331,6 +463,7 @@ def connect_spotify(
     selected_playlist_state,
     royal_shuffle_button,
     export_csv_button,
+    import_csv_button,
 ):
     log_debug("Connect Spotify button pressed")
 
@@ -391,6 +524,7 @@ def connect_spotify(
                 selected_playlist_state,
                 royal_shuffle_button,
                 export_csv_button,
+                import_csv_button,
             )
             log_debug("Spotify connection completed successfully")
 
@@ -470,7 +604,7 @@ def main():
         text="RoyalShuffle",
         font=("Arial", 24)
     )
-    title.pack(pady=40)
+    title.pack(pady=20)
 
     subtitle = tk.Label(
         root,
@@ -498,9 +632,10 @@ def main():
             selected_playlist_state,
             royal_shuffle_button,
             export_csv_button,
+            import_csv_button,
         )
     )
-    connect_button.pack(pady=20)
+    connect_button.pack(pady=10)
 
     playlist_frame = tk.Frame(root)
     playlist_frame.pack(
@@ -745,14 +880,27 @@ def main():
         finally:
             export_csv_button.config(state="normal")
 
+    file_action_frame = tk.Frame(root)
+    file_action_frame.pack(pady=10)
+
     export_csv_button = tk.Button(
-        root,
+        file_action_frame,
         text="Export CSV...",
         width=20,
         state="disabled",
         command=handle_export_csv,
     )
-    export_csv_button.pack(pady=10)
+    export_csv_button.pack(side="left", padx=5)
+
+    import_csv_button = create_import_csv_button(
+        file_action_frame,
+        lambda: import_csv_playlist(
+            root,
+            client_state["client"],
+            status_label,
+            import_csv_button,
+        ),
+    )
 
     def try_saved_spotify_session():
         log_debug("Checking for saved Spotify session")
@@ -799,6 +947,7 @@ def main():
                 selected_playlist_state,
                 royal_shuffle_button,
                 export_csv_button,
+                import_csv_button,
             )
 
         except SpotifyRetryLaterError as exc:

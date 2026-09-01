@@ -13,7 +13,11 @@ except ModuleNotFoundError:
     requests.put = Mock()
     sys.modules["requests"] = requests
 
-from spotify_client import SpotifyClient, SpotifyRetryLaterError
+from spotify_client import (
+    SpotifyClient,
+    SpotifyRetryLaterError,
+    SpotifyTrackNotFoundError,
+)
 from royalshuffle import royal_shuffle
 
 
@@ -26,9 +30,9 @@ def response(status_code=201, retry_after=None, payload=None):
         result.headers["Retry-After"] = retry_after
 
     if status_code >= 400:
-        result.raise_for_status.side_effect = (
-            requests.HTTPError(f"HTTP {status_code}")
-        )
+        error = requests.HTTPError(f"HTTP {status_code}")
+        error.response = result
+        result.raise_for_status.side_effect = error
 
     if payload is not None:
         result.json.return_value = payload
@@ -39,6 +43,43 @@ def response(status_code=201, retry_after=None, payload=None):
 class SpotifyClientTests(unittest.TestCase):
     def setUp(self):
         self.client = SpotifyClient("test-token")
+
+    @patch("spotify_client.requests.get")
+    def test_get_track_uses_supported_individual_endpoint(self, get):
+        get.return_value = response(
+            200,
+            payload={"id": "track-id", "type": "track"},
+        )
+
+        result = self.client.get_track("track-id")
+
+        self.assertEqual(result["id"], "track-id")
+        get.assert_called_once_with(
+            "https://api.spotify.com/v1/tracks/track-id",
+            headers=self.client.headers,
+        )
+
+    @patch("spotify_client.requests.get")
+    def test_get_track_converts_404_to_not_found(self, get):
+        get.return_value = response(404)
+
+        with self.assertRaises(SpotifyTrackNotFoundError) as caught:
+            self.client.get_track("missing-id")
+
+        self.assertEqual(caught.exception.track_id, "missing-id")
+
+    @patch("spotify_client.time.sleep")
+    @patch("spotify_client.requests.get")
+    def test_get_track_reuses_rate_limit_handling(self, get, sleep):
+        get.side_effect = [
+            response(429, retry_after="2"),
+            response(200, payload={"id": "track-id"}),
+        ]
+
+        self.client.get_track("track-id")
+
+        self.assertEqual(get.call_count, 2)
+        sleep.assert_called_once_with(2)
 
     @patch("spotify_client.log_debug")
     @patch("spotify_client.requests.get")
@@ -263,11 +304,15 @@ class SpotifyClientTests(unittest.TestCase):
     ):
         post.side_effect = [response(), response(500)]
 
-        with self.assertRaises(requests.HTTPError):
+        with self.assertRaises(requests.HTTPError) as caught:
             self.client.add_playlist_items(
                 "playlist-id",
                 ["uri"] * 200,
             )
+
+        self.assertEqual(caught.exception.playlist_id, "playlist-id")
+        self.assertEqual(caught.exception.items_written, 100)
+        self.assertEqual(caught.exception.total_items, 200)
 
         messages = [
             args[0]
@@ -278,6 +323,24 @@ class SpotifyClientTests(unittest.TestCase):
             and "exception_type=HTTPError" in message
             for message in messages
         ))
+
+    @patch("spotify_client.requests.post")
+    def test_batching_preserves_order_and_duplicates(self, post):
+        post.side_effect = [response(), response()]
+        uris = [f"spotify:track:{index:022d}" for index in range(100)]
+        uris.extend([uris[0], "spotify:track:" + "9" * 22])
+
+        written = self.client.add_playlist_items("playlist-id", uris)
+
+        self.assertEqual(written, 102)
+        self.assertEqual(
+            post.call_args_list[0].kwargs["json"]["uris"],
+            uris[:100],
+        )
+        self.assertEqual(
+            post.call_args_list[1].kwargs["json"]["uris"],
+            uris[100:],
+        )
 
 
 class RoyalShuffleWorkflowTests(unittest.TestCase):
