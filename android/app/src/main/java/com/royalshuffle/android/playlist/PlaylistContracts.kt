@@ -18,7 +18,7 @@ interface PlaylistApi {
 
 interface PlaylistPreferences {
     fun loadManagedPlaylistIds(): Set<String>
-    fun addManagedPlaylistId(playlistId: String)
+    suspend fun addManagedPlaylistId(playlistId: String): Boolean
     fun loadSelectedPlaylistId(): String?
     fun saveSelectedPlaylistId(playlistId: String)
     fun clearSelectedPlaylistId()

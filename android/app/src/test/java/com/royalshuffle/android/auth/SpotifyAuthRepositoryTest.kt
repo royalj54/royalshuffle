@@ -1,8 +1,17 @@
 package com.royalshuffle.android.auth
 
+import com.royalshuffle.android.diagnostics.DiagnosticEvent
+import com.royalshuffle.android.diagnostics.DiagnosticLogger
 import java.net.URI
 import java.net.URLDecoder
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -11,10 +20,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class SpotifyAuthRepositoryTest {
     private val storage = FakeAuthStorage()
     private val tokenClient = FakeTokenClient()
     private var nowSeconds = 1_000L
+    private val diagnostics = mutableListOf<DiagnosticEvent>()
     private val repository = SpotifyAuthRepository(
         clientId = "client-id",
         redirectUri = REDIRECT_URI,
@@ -23,6 +34,7 @@ class SpotifyAuthRepositoryTest {
         tokenClient = tokenClient,
         pkceProvider = FixedPkceProvider,
         clock = EpochClock { nowSeconds },
+        diagnostics = DiagnosticLogger { diagnostics += it },
     )
 
     @Test
@@ -121,7 +133,48 @@ class SpotifyAuthRepositoryTest {
         assertFalse(repository.restoreSession())
 
         assertNull(storage.session)
+        assertEquals(SpotifySessionState.INVALIDATED, repository.sessionState.value)
+        assertTrue(
+            diagnostics.any {
+                it.eventName == "spotify_session_invalidated" &&
+                    it.failureCategory == "INVALID_GRANT"
+            },
+        )
     }
+
+    @Test
+    fun `refresh cancellation propagates without invalidating valid stored session`() = runBlocking {
+        val original = TokenSession("old-access", "refresh", 1_020L)
+        storage.session = original
+        val cancellation = CancellationException("cancelled")
+        tokenClient.refreshError = cancellation
+
+        val error = runCatching { repository.getValidAccessToken() }.exceptionOrNull()
+
+        assertTrue(error === cancellation)
+        assertEquals(original, storage.session)
+        assertFalse(repository.sessionState.value == SpotifySessionState.INVALIDATED)
+    }
+
+    @Test
+    fun `token exchange cancellation propagates without invalidating valid stored session`() =
+        runBlocking {
+            val original = TokenSession("existing-access", "refresh", 2_000L)
+            storage.session = original
+            storage.pending = PENDING
+            val cancellation = CancellationException("cancelled")
+            tokenClient.exchangeError = cancellation
+
+            val error = runCatching {
+                repository.handleCallback(
+                    "$REDIRECT_URI?code=authorization-code&state=${PENDING.state}",
+                )
+            }.exceptionOrNull()
+
+            assertTrue(error === cancellation)
+            assertEquals(original, storage.session)
+            assertFalse(repository.sessionState.value == SpotifySessionState.INVALIDATED)
+        }
 
     @Test
     fun `disconnect clears session and pending authorization`() {
@@ -132,6 +185,30 @@ class SpotifyAuthRepositoryTest {
 
         assertNull(storage.session)
         assertNull(storage.pending)
+    }
+
+    @Test
+    fun `auth UI disconnects with reconnect action after shared invalidation`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            storage.session = TokenSession("access", "refresh", 2_000L)
+            val viewModel = AuthViewModel(repository)
+            advanceUntilIdle()
+            assertEquals(AuthUiState.Connected, viewModel.uiState.value)
+
+            repository.invalidateSession()
+            advanceUntilIdle()
+
+            assertEquals(
+                AuthUiState.Disconnected(AuthViewModel.RECONNECT_REQUIRED_MESSAGE),
+                viewModel.uiState.value,
+            )
+            viewModel.connect()
+            assertEquals(AuthUiState.Authenticating, viewModel.uiState.value)
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 
     private suspend fun expectAuthException(block: suspend () -> Unit): AuthException {
@@ -179,7 +256,8 @@ class SpotifyAuthRepositoryTest {
     private class FakeTokenClient : TokenEndpointClient {
         var exchangeResponse = TokenResponse("access", "refresh", 3_600L)
         var refreshResponse = TokenResponse("access", null, 3_600L)
-        var refreshError: TokenEndpointException? = null
+        var exchangeError: Exception? = null
+        var refreshError: Exception? = null
         var exchangeCount = 0
         var refreshCount = 0
         var lastCode: String? = null
@@ -192,6 +270,7 @@ class SpotifyAuthRepositoryTest {
             redirectUri: String,
         ): TokenResponse {
             exchangeCount += 1
+            exchangeError?.let { throw it }
             lastCode = code
             lastVerifier = codeVerifier
             return exchangeResponse

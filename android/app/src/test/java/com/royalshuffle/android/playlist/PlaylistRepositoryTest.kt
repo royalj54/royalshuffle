@@ -101,8 +101,9 @@ class PlaylistRepositoryTest {
         var clearSelectionCount = 0
 
         override fun loadManagedPlaylistIds(): Set<String> = managedIds
-        override fun addManagedPlaylistId(playlistId: String) {
+        override suspend fun addManagedPlaylistId(playlistId: String): Boolean {
             managedIds += playlistId
+            return true
         }
 
         override fun loadSelectedPlaylistId(): String? = selectedId

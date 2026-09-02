@@ -1,18 +1,39 @@
 package com.royalshuffle.android.data.local
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.royalshuffle.android.playlist.PlaylistPreferences
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-class SharedPreferencesPlaylistPreferences(context: Context) : PlaylistPreferences {
-    private val preferences = context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
+class SharedPreferencesPlaylistPreferences internal constructor(
+    private val preferences: SharedPreferences,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) : PlaylistPreferences {
+    constructor(
+        context: Context,
+        ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    ) : this(
+        context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE),
+        ioDispatcher,
+    )
 
     override fun loadManagedPlaylistIds(): Set<String> =
         preferences.getStringSet(KEY_MANAGED_PLAYLIST_IDS, emptySet()).orEmpty().toSet()
 
-    override fun addManagedPlaylistId(playlistId: String) {
-        val updatedIds = loadManagedPlaylistIds() + playlistId
-        preferences.edit().putStringSet(KEY_MANAGED_PLAYLIST_IDS, updatedIds).apply()
-    }
+    override suspend fun addManagedPlaylistId(playlistId: String): Boolean =
+        withContext(ioDispatcher) {
+            try {
+                val updatedIds = loadManagedPlaylistIds() + playlistId
+                preferences.edit().putStringSet(KEY_MANAGED_PLAYLIST_IDS, updatedIds).commit()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                false
+            }
+        }
 
     override fun loadSelectedPlaylistId(): String? =
         preferences.getString(KEY_SELECTED_PLAYLIST_ID, null)

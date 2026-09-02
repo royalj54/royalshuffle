@@ -7,6 +7,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
@@ -67,6 +68,8 @@ class SpotifyTokenEndpointClient : TokenEndpointClient {
                     refreshToken = json.optString("refresh_token").takeIf { it.isNotBlank() },
                     expiresInSeconds = json.getLong("expires_in"),
                 )
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: TokenEndpointException) {
                 throw error
             } catch (error: Exception) {

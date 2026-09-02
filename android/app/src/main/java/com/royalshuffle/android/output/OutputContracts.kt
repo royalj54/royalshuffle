@@ -1,10 +1,16 @@
 package com.royalshuffle.android.output
 
+import com.royalshuffle.android.data.remote.WebApiFailureCategory
 import com.royalshuffle.android.domain.model.Playlist
 
 data class PlaylistItemsPage(
-    val itemUris: List<String?>,
+    val items: List<OutputPlaylistItem>,
     val nextUrl: String?,
+)
+
+data class OutputPlaylistItem(
+    val uri: String?,
+    val isLocal: Boolean = false,
 )
 
 interface OutputPlaylistApi {
@@ -33,6 +39,7 @@ sealed interface OutputProgress {
 data class OutputResult(
     val playlist: Playlist,
     val itemCount: Int,
+    val skippedLocalItemCount: Int,
 )
 
 class OutputPlaylistException(val reason: Reason) : Exception() {
@@ -43,3 +50,18 @@ class OutputPlaylistException(val reason: Reason) : Exception() {
         SOURCE_OUTPUT_ID_COLLISION,
     }
 }
+
+class PartialPlaylistWriteException(
+    val outputPlaylistId: String,
+    val outputPlaylistName: String,
+    val confirmedItemsWritten: Int,
+    val totalItemsIntended: Int,
+    val underlyingReason: OutputPlaylistException.Reason?,
+    val underlyingFailureCategory: WebApiFailureCategory?,
+    cause: Throwable,
+) : Exception(cause)
+
+class ManagedPlaylistRegistrationException(
+    val outputPlaylistId: String,
+    val outputPlaylistName: String,
+) : Exception()

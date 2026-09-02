@@ -1,5 +1,7 @@
 package com.royalshuffle.android.auth
 
+import kotlinx.coroutines.flow.StateFlow
+
 interface AuthStorage {
     fun loadSession(): TokenSession?
     fun saveSession(session: TokenSession)
@@ -34,4 +36,16 @@ interface PkceProvider {
 
 fun interface AccessTokenProvider {
     suspend fun getValidAccessToken(): String?
+}
+
+enum class SpotifySessionState {
+    UNKNOWN,
+    ACTIVE,
+    MISSING,
+    INVALIDATED,
+}
+
+interface SessionInvalidator {
+    val sessionState: StateFlow<SpotifySessionState>
+    fun invalidateSession()
 }

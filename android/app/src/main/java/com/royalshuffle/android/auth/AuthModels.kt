@@ -19,7 +19,7 @@ data class TokenResponse(
 
 sealed interface AuthUiState {
     data object Restoring : AuthUiState
-    data object Disconnected : AuthUiState
+    data class Disconnected(val message: String? = null) : AuthUiState
     data object Authenticating : AuthUiState
     data object Connected : AuthUiState
     data class Error(val message: String) : AuthUiState

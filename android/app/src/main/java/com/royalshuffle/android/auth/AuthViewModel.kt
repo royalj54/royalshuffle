@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class AuthViewModel(
@@ -22,8 +23,21 @@ class AuthViewModel(
 
     init {
         viewModelScope.launch {
+            repository.sessionState.collectLatest { sessionState ->
+                if (sessionState == SpotifySessionState.INVALIDATED) {
+                    mutableUiState.value = AuthUiState.Disconnected(RECONNECT_REQUIRED_MESSAGE)
+                }
+            }
+        }
+        viewModelScope.launch {
             mutableUiState.value = try {
-                if (repository.restoreSession()) AuthUiState.Connected else AuthUiState.Disconnected
+                if (repository.restoreSession()) {
+                    AuthUiState.Connected
+                } else if (repository.sessionState.value == SpotifySessionState.INVALIDATED) {
+                    AuthUiState.Disconnected(RECONNECT_REQUIRED_MESSAGE)
+                } else {
+                    AuthUiState.Disconnected()
+                }
             } catch (error: AuthException) {
                 AuthUiState.Error(error.toUserMessage())
             }
@@ -54,12 +68,12 @@ class AuthViewModel(
 
     fun cancelAuthentication() {
         repository.cancelAuthentication()
-        mutableUiState.value = AuthUiState.Disconnected
+        mutableUiState.value = AuthUiState.Disconnected()
     }
 
     fun disconnect() {
         repository.disconnect()
-        mutableUiState.value = AuthUiState.Disconnected
+        mutableUiState.value = AuthUiState.Disconnected()
     }
 
     private fun AuthException.toUserMessage(): String = when (reason) {
@@ -73,6 +87,8 @@ class AuthViewModel(
     }
 
     companion object {
+        const val RECONNECT_REQUIRED_MESSAGE =
+            "Spotify session expired or was revoked. Connect Spotify again."
         const val CALLBACK_SCHEME = "com.royalshuffle.android.auth"
         const val CALLBACK_HOST = "callback"
         const val REDIRECT_URI = "$CALLBACK_SCHEME://$CALLBACK_HOST"

@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.royalshuffle.android.domain.model.Playlist
+import com.royalshuffle.android.ui.spotifyWebApiMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 sealed interface PlaylistUiState {
@@ -37,8 +39,15 @@ class PlaylistViewModel(
                 } else {
                     PlaylistUiState.Content(result.playlists, result.selectedPlaylistId)
                 }
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
-                PlaylistUiState.Error("Could not load Spotify playlists. Check your connection.")
+                if (error.requiresSpotifyReconnect()) {
+                    PlaylistUiState.Idle
+                } else PlaylistUiState.Error(
+                    spotifyWebApiMessage(error)
+                        ?: "Could not load Spotify playlists. Try again.",
+                )
             }
         }
     }
@@ -54,6 +63,11 @@ class PlaylistViewModel(
         mutableUiState.value = PlaylistUiState.Idle
     }
 
+    fun clearForSessionInvalidation() {
+        repository.clearSelection()
+        mutableUiState.value = PlaylistUiState.Idle
+    }
+
     companion object {
         fun factory(repository: PlaylistRepository): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
@@ -64,3 +78,8 @@ class PlaylistViewModel(
             }
     }
 }
+
+private fun Throwable.requiresSpotifyReconnect(): Boolean =
+    this is PlaylistException && reason == PlaylistException.Reason.NOT_AUTHENTICATED ||
+        this is com.royalshuffle.android.data.remote.SpotifyWebApiException &&
+        category == com.royalshuffle.android.data.remote.WebApiFailureCategory.AUTHENTICATION

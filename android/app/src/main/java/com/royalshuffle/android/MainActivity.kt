@@ -3,7 +3,6 @@ package com.royalshuffle.android
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -15,22 +14,30 @@ import com.royalshuffle.android.playlist.createPlaylistRepository
 import com.royalshuffle.android.output.OutputViewModel
 import com.royalshuffle.android.output.createOutputPlaylistUseCase
 import com.royalshuffle.android.ui.RoyalShuffleApp
+import com.royalshuffle.android.diagnostics.DiagnosticLoggerProvider
+import com.royalshuffle.android.diagnostics.createDiagnosticShareCoordinator
+import com.royalshuffle.android.diagnostics.recordAuthCallbackMetadata
+import com.royalshuffle.android.diagnostics.shareDiagnostics
 
 class MainActivity : ComponentActivity() {
     private val authRepository by lazy {
         createSpotifyAuthRepository(applicationContext)
+    }
+    private val diagnostics by lazy { DiagnosticLoggerProvider.get(applicationContext) }
+    private val diagnosticShareCoordinator by lazy {
+        createDiagnosticShareCoordinator(applicationContext)
     }
     private val authViewModel: AuthViewModel by viewModels {
         AuthViewModel.factory(authRepository)
     }
     private val playlistViewModel: PlaylistViewModel by viewModels {
         PlaylistViewModel.factory(
-            createPlaylistRepository(applicationContext, authRepository),
+            createPlaylistRepository(applicationContext, authRepository, authRepository),
         )
     }
     private val outputViewModel: OutputViewModel by viewModels {
         OutputViewModel.factory(
-            createOutputPlaylistUseCase(applicationContext, authRepository),
+            createOutputPlaylistUseCase(applicationContext, authRepository, authRepository),
         )
     }
 
@@ -44,6 +51,7 @@ class MainActivity : ComponentActivity() {
                 playlistViewModel = playlistViewModel,
                 outputViewModel = outputViewModel,
                 openAuthorizationUrl = ::openAuthorizationUrl,
+                onShareDiagnostics = ::shareAppDiagnostics,
             )
         }
     }
@@ -56,17 +64,8 @@ class MainActivity : ComponentActivity() {
 
     private fun handleAuthCallback(intent: Intent) {
         val callbackUri = intent.data
-        Log.i(TAG, "Intent received; dataPresent=${callbackUri != null}")
         callbackUri ?: return
-
-        val queryNames = callbackUri.queryParameterNames
-        Log.i(
-            TAG,
-            "Callback metadata; scheme=${callbackUri.scheme}; host=${callbackUri.host}; " +
-                "codePresent=${"code" in queryNames}; statePresent=${"state" in queryNames}; " +
-                "errorPresent=${"error" in queryNames}; " +
-                "errorDescriptionPresent=${"error_description" in queryNames}",
-        )
+        recordAuthCallbackMetadata(diagnostics, callbackUri.toString())
 
         if (
             callbackUri.scheme == AuthViewModel.CALLBACK_SCHEME &&
@@ -85,7 +84,7 @@ class MainActivity : ComponentActivity() {
             .launchUrl(this, Uri.parse(url))
     }
 
-    private companion object {
-        const val TAG = "RoyalShuffleAuth"
+    private fun shareAppDiagnostics() {
+        shareDiagnostics(this, diagnosticShareCoordinator)
     }
 }

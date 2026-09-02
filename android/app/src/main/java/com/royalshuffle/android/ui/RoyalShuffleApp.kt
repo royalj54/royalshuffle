@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,10 +17,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -28,6 +31,7 @@ import com.royalshuffle.android.auth.AuthViewModel
 import com.royalshuffle.android.domain.model.Playlist
 import com.royalshuffle.android.output.OutputUiState
 import com.royalshuffle.android.output.OutputViewModel
+import com.royalshuffle.android.output.message
 import com.royalshuffle.android.playlist.PlaylistUiState
 import com.royalshuffle.android.playlist.PlaylistViewModel
 import com.royalshuffle.android.ui.theme.RoyalShuffleTheme
@@ -38,21 +42,31 @@ fun RoyalShuffleApp(
     playlistViewModel: PlaylistViewModel,
     outputViewModel: OutputViewModel,
     openAuthorizationUrl: (String) -> Unit,
+    onShareDiagnostics: () -> Unit,
 ) {
     val authState by authViewModel.uiState.collectAsState()
     val playlistState by playlistViewModel.uiState.collectAsState()
     val outputState by outputViewModel.uiState.collectAsState()
+    val aboutController = remember { AboutDialogController() }
 
     LaunchedEffect(authViewModel) {
         authViewModel.authorizationRequests.collect(openAuthorizationUrl)
     }
 
     LaunchedEffect(authState) {
-        if (authState == AuthUiState.Connected) {
+        val currentAuthState = authState
+        if (currentAuthState == AuthUiState.Connected) {
             playlistViewModel.loadPlaylists()
         } else {
-            playlistViewModel.clear()
-            outputViewModel.clear()
+            if (currentAuthState is AuthUiState.Disconnected &&
+                currentAuthState.message != null
+            ) {
+                playlistViewModel.clearForSessionInvalidation()
+                outputViewModel.clearForSessionInvalidation()
+            } else {
+                playlistViewModel.clear()
+                outputViewModel.clear()
+            }
         }
     }
 
@@ -81,6 +95,14 @@ fun RoyalShuffleApp(
                     modifier = Modifier.padding(top = 12.dp),
                     style = MaterialTheme.typography.bodyLarge,
                 )
+                Row {
+                    TextButton(onClick = aboutController::open) {
+                        Text("About")
+                    }
+                    TextButton(onClick = onShareDiagnostics) {
+                        Text("Share Diagnostics")
+                    }
+                }
                 AuthControls(
                     state = authState,
                     onConnect = authViewModel::connect,
@@ -97,6 +119,12 @@ fun RoyalShuffleApp(
                     )
                 }
             }
+        }
+        if (aboutController.isVisible) {
+            AboutDialog(
+                appInfo = androidAboutAppInfo(),
+                onDismiss = aboutController::close,
+            )
         }
     }
 }
@@ -193,9 +221,14 @@ private fun OutputStatus(
             Text(state.message, modifier = Modifier.padding(top = 8.dp))
         }
         is OutputUiState.Success -> Text(
-            "Created ${state.playlistName} with ${state.itemCount} items.",
+            state.message(),
             modifier = Modifier.padding(top = 12.dp),
             color = MaterialTheme.colorScheme.primary,
+        )
+        is OutputUiState.PartialFailure -> Text(
+            state.message,
+            modifier = Modifier.padding(top = 12.dp),
+            color = MaterialTheme.colorScheme.error,
         )
         is OutputUiState.Error -> {
             Text(
@@ -248,8 +281,16 @@ private fun AuthControls(
             }
         }
 
-        AuthUiState.Disconnected -> {
-            Text("Not connected", modifier = Modifier.padding(top = 32.dp))
+        is AuthUiState.Disconnected -> {
+            Text(
+                state.message ?: "Not connected",
+                modifier = Modifier.padding(top = 32.dp),
+                color = if (state.message != null) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
             Button(onClick = onConnect, modifier = Modifier.padding(top = 16.dp)) {
                 Text("Connect Spotify")
             }

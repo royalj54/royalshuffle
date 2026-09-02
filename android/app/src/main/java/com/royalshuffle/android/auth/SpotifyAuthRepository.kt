@@ -4,6 +4,13 @@ import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.MessageDigest
+import com.royalshuffle.android.diagnostics.DiagnosticEvent
+import com.royalshuffle.android.diagnostics.DiagnosticLogger
+import com.royalshuffle.android.diagnostics.NoOpDiagnosticLogger
+import com.royalshuffle.android.diagnostics.recordSafely
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class SpotifyAuthRepository(
     private val clientId: String,
@@ -13,7 +20,12 @@ class SpotifyAuthRepository(
     private val tokenClient: TokenEndpointClient,
     private val pkceProvider: PkceProvider,
     private val clock: EpochClock,
-) : AccessTokenProvider {
+    private val diagnostics: DiagnosticLogger = NoOpDiagnosticLogger,
+) : AccessTokenProvider, SessionInvalidator {
+    private val mutableSessionState = MutableStateFlow(SpotifySessionState.UNKNOWN)
+    override val sessionState: StateFlow<SpotifySessionState> =
+        mutableSessionState.asStateFlow()
+
     fun beginAuthorization(): String {
         if (clientId.isBlank()) {
             throw AuthException(AuthException.Reason.CONFIGURATION_MISSING)
@@ -37,17 +49,32 @@ class SpotifyAuthRepository(
     suspend fun restoreSession(): Boolean = getValidAccessToken() != null
 
     override suspend fun getValidAccessToken(): String? {
-        val session = storage.loadSession() ?: return null
+        val session = storage.loadSession() ?: run {
+            if (mutableSessionState.value != SpotifySessionState.INVALIDATED) {
+                mutableSessionState.value = SpotifySessionState.MISSING
+            }
+            return null
+        }
         if (session.expiresAtEpochSeconds > clock.nowSeconds() + EXPIRY_SKEW_SECONDS) {
+            mutableSessionState.value = SpotifySessionState.ACTIVE
             return session.accessToken
         }
 
         return try {
             refresh(session)
+            mutableSessionState.value = SpotifySessionState.ACTIVE
             storage.loadSession()?.accessToken
         } catch (error: TokenEndpointException) {
             if (error.errorCode == "invalid_grant") {
-                storage.clearSession()
+                diagnostics.recordSafely(
+                    DiagnosticEvent(
+                        eventName = "spotify_session_invalidated",
+                        operationName = "refresh_access_token",
+                        failureCategory = "INVALID_GRANT",
+                        exceptionClass = error::class.java.simpleName,
+                    ),
+                )
+                invalidateSession()
                 null
             } else {
                 throw AuthException(AuthException.Reason.NETWORK)
@@ -84,6 +111,7 @@ class SpotifyAuthRepository(
                 ?: throw AuthException(AuthException.Reason.TOKEN_EXCHANGE_FAILED)
             storage.saveSession(response.toSession(refreshToken))
             storage.clearPendingAuthorization()
+            mutableSessionState.value = SpotifySessionState.ACTIVE
         } catch (error: TokenEndpointException) {
             throw AuthException(AuthException.Reason.TOKEN_EXCHANGE_FAILED)
         }
@@ -96,6 +124,15 @@ class SpotifyAuthRepository(
     fun disconnect() {
         storage.clearPendingAuthorization()
         storage.clearSession()
+        mutableSessionState.value = SpotifySessionState.MISSING
+    }
+
+    override fun invalidateSession() {
+        storage.clearSession()
+        mutableSessionState.value = SpotifySessionState.INVALIDATED
+        diagnostics.recordSafely(
+            DiagnosticEvent(eventName = "spotify_session_invalidated"),
+        )
     }
 
     private suspend fun refresh(existing: TokenSession) {
