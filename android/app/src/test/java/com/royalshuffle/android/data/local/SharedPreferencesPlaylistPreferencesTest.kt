@@ -45,6 +45,44 @@ class SharedPreferencesPlaylistPreferencesTest {
         assertEquals(0, sharedPreferences.applyCount)
     }
 
+    @Test
+    fun `managed recovery batch commits atomically and survives recreation`() = runTest {
+        val sharedPreferences = FakeSharedPreferences()
+        val first = SharedPreferencesPlaylistPreferences(
+            sharedPreferences,
+            UnconfinedTestDispatcher(testScheduler),
+        )
+
+        assertTrue(first.addManagedPlaylistIds(setOf("one", "two")))
+
+        val fresh = SharedPreferencesPlaylistPreferences(
+            sharedPreferences,
+            UnconfinedTestDispatcher(testScheduler),
+        )
+        assertEquals(setOf("one", "two"), fresh.loadManagedPlaylistIds())
+        assertEquals(1, sharedPreferences.commitCount)
+    }
+
+    @Test
+    fun `declined recovery IDs commit separately and survive recreation`() = runTest {
+        val sharedPreferences = FakeSharedPreferences()
+        val first = SharedPreferencesPlaylistPreferences(
+            sharedPreferences,
+            UnconfinedTestDispatcher(testScheduler),
+        )
+
+        assertTrue(first.addDeclinedRecoveryPlaylistIds(setOf("legacy")))
+
+        val fresh = SharedPreferencesPlaylistPreferences(
+            sharedPreferences,
+            UnconfinedTestDispatcher(testScheduler),
+        )
+        assertEquals(setOf("legacy"), fresh.loadDeclinedRecoveryPlaylistIds())
+        assertTrue(fresh.loadManagedPlaylistIds().isEmpty())
+        assertEquals(1, sharedPreferences.commitCount)
+        assertEquals(0, sharedPreferences.applyCount)
+    }
+
     private class FakeSharedPreferences : SharedPreferences {
         private val values = mutableMapOf<String, Any?>()
         var commitSucceeds = true

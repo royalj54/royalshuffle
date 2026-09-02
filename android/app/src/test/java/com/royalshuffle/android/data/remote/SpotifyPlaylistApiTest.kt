@@ -40,6 +40,27 @@ class SpotifyPlaylistApiTest {
     }
 
     @Test
+    fun `playlist listing maps descriptions for exact recovery detection`() = runBlocking {
+        val transport = WebApiTransport {
+            WebApiResponse(
+                200,
+                emptyMap(),
+                """{"items":[{"id":"one","name":"Anything","description":"marker"}],"next":null}""",
+            )
+        }
+        val api = SpotifyPlaylistApi(
+            SpotifyWebApiClient(transport, RetryDelay { }, WebApiDiagnostics { }),
+        )
+
+        val page = api.getPlaylistsPage(
+            "https://api.spotify.com/v1/me/playlists?limit=50",
+            "token",
+        )
+
+        assertEquals("marker", page.playlists.single().description)
+    }
+
+    @Test
     fun `playlist listing 401 invalidates session without replay`() = runBlocking {
         var attempts = 0
         val transport = WebApiTransport {

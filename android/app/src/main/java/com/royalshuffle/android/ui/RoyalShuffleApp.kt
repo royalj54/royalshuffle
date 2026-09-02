@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -120,6 +121,14 @@ fun RoyalShuffleApp(
                 }
             }
         }
+        val recoveryState = playlistState as? PlaylistUiState.Recovery
+        if (recoveryState != null) {
+            RecoveryDialog(
+                state = recoveryState,
+                onRecover = playlistViewModel::recoverCandidates,
+                onLeaveUnmanaged = playlistViewModel::leaveCandidatesUnmanaged,
+            )
+        }
         if (aboutController.isVisible) {
             AboutDialog(
                 appInfo = androidAboutAppInfo(),
@@ -161,6 +170,11 @@ private fun ColumnScope.PlaylistControls(
             Button(onClick = onRetry, modifier = Modifier.padding(top = 12.dp)) {
                 Text("Retry")
             }
+        }
+
+        is PlaylistUiState.Recovery -> {
+            CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
+            Text("Reviewing managed playlists…", modifier = Modifier.padding(top = 12.dp))
         }
 
         is PlaylistUiState.Content -> {
@@ -220,6 +234,7 @@ private fun OutputStatus(
             CircularProgressIndicator(modifier = Modifier.padding(top = 12.dp))
             Text(state.message, modifier = Modifier.padding(top = 8.dp))
         }
+
         is OutputUiState.Success -> Text(
             state.message(),
             modifier = Modifier.padding(top = 12.dp),
@@ -245,6 +260,47 @@ private fun OutputStatus(
             }
         }
     }
+}
+
+@Composable
+private fun RecoveryDialog(
+    state: PlaylistUiState.Recovery,
+    onRecover: () -> Unit,
+    onLeaveUnmanaged: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text("Recover managed playlists?") },
+        text = {
+            Column {
+                Text(
+                    "RoyalShuffle found ${state.candidates.size} ${if (state.candidates.size == 1) "playlist" else "playlists"} " +
+                        "that appear to have been created by RoyalShuffle on another installation or before app data was reset.",
+                )
+                Text(
+                    "Recover them to keep them excluded as source playlists, or leave them unmanaged.",
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                state.errorMessage?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onRecover, enabled = !state.isPersisting) {
+                Text("Recover")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onLeaveUnmanaged, enabled = !state.isPersisting) {
+                Text("Leave Unmanaged")
+            }
+        },
+    )
 }
 
 @Composable

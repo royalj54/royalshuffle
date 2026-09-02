@@ -10,6 +10,8 @@ data class PlaylistPage(
 data class PlaylistLoadResult(
     val playlists: List<Playlist>,
     val selectedPlaylistId: String?,
+    val recoveryCandidates: List<Playlist> = emptyList(),
+    val playlistsIfRecoveryDeclined: List<Playlist> = playlists,
 )
 
 interface PlaylistApi {
@@ -19,6 +21,9 @@ interface PlaylistApi {
 interface PlaylistPreferences {
     fun loadManagedPlaylistIds(): Set<String>
     suspend fun addManagedPlaylistId(playlistId: String): Boolean
+    suspend fun addManagedPlaylistIds(playlistIds: Set<String>): Boolean
+    fun loadDeclinedRecoveryPlaylistIds(): Set<String>
+    suspend fun addDeclinedRecoveryPlaylistIds(playlistIds: Set<String>): Boolean
     fun loadSelectedPlaylistId(): String?
     fun saveSelectedPlaylistId(playlistId: String)
     fun clearSelectedPlaylistId()

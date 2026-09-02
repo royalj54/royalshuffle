@@ -180,6 +180,12 @@ class SessionStateCoordinationTest {
             if (registrationSucceeds) managedIds += playlistId
             return registrationSucceeds
         }
+        override suspend fun addManagedPlaylistIds(playlistIds: Set<String>): Boolean {
+            if (registrationSucceeds) managedIds += playlistIds
+            return registrationSucceeds
+        }
+        override fun loadDeclinedRecoveryPlaylistIds(): Set<String> = emptySet()
+        override suspend fun addDeclinedRecoveryPlaylistIds(playlistIds: Set<String>) = true
         override fun loadSelectedPlaylistId(): String? = selectedId
         override fun saveSelectedPlaylistId(playlistId: String) { selectedId = playlistId }
         override fun clearSelectedPlaylistId() { selectedId = null }

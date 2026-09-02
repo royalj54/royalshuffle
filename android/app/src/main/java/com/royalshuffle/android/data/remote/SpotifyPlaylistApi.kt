@@ -21,7 +21,12 @@ class SpotifyPlaylistApi(
                         val item = items.optJSONObject(index) ?: continue
                         val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
                         val name = item.optString("name").takeIf { it.isNotBlank() } ?: continue
-                        add(Playlist(id = id, name = name))
+                        val description = if (item.isNull("description")) {
+                            null
+                        } else {
+                            item.optString("description")
+                        }
+                        add(Playlist(id = id, name = name, description = description))
                     }
                 }
                 val nextUrl = if (json.isNull("next")) null else json.getString("next")

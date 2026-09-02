@@ -19,6 +19,14 @@ sealed interface PlaylistUiState {
         val playlists: List<Playlist>,
         val selectedPlaylistId: String?,
     ) : PlaylistUiState
+    data class Recovery(
+        val candidates: List<Playlist>,
+        val eligiblePlaylists: List<Playlist>,
+        val playlistsIfDeclined: List<Playlist>,
+        val selectedPlaylistId: String?,
+        val isPersisting: Boolean = false,
+        val errorMessage: String? = null,
+    ) : PlaylistUiState
     data class Error(val message: String) : PlaylistUiState
 }
 
@@ -34,7 +42,14 @@ class PlaylistViewModel(
         viewModelScope.launch {
             mutableUiState.value = try {
                 val result = repository.loadEligiblePlaylists()
-                if (result.playlists.isEmpty()) {
+                if (result.recoveryCandidates.isNotEmpty()) {
+                    PlaylistUiState.Recovery(
+                        result.recoveryCandidates,
+                        result.playlists,
+                        result.playlistsIfRecoveryDeclined,
+                        result.selectedPlaylistId,
+                    )
+                } else if (result.playlists.isEmpty()) {
                     PlaylistUiState.Empty
                 } else {
                     PlaylistUiState.Content(result.playlists, result.selectedPlaylistId)
@@ -61,6 +76,39 @@ class PlaylistViewModel(
 
     fun clear() {
         mutableUiState.value = PlaylistUiState.Idle
+    }
+
+    fun recoverCandidates() = resolveRecovery(recover = true)
+
+    fun leaveCandidatesUnmanaged() = resolveRecovery(recover = false)
+
+    private fun resolveRecovery(recover: Boolean) {
+        val current = mutableUiState.value as? PlaylistUiState.Recovery ?: return
+        if (current.isPersisting) return
+        mutableUiState.value = current.copy(isPersisting = true, errorMessage = null)
+        viewModelScope.launch {
+            val candidateIds = current.candidates.mapTo(mutableSetOf()) { it.id }
+            val succeeded = if (recover) {
+                repository.recoverCandidates(candidateIds)
+            } else {
+                repository.declineCandidates(candidateIds)
+            }
+            mutableUiState.value = if (!succeeded) {
+                current.copy(
+                    errorMessage = "Could not save the recovery decision on this device. Try again.",
+                )
+            } else {
+                val eligible = if (recover) {
+                    current.eligiblePlaylists
+                } else {
+                    current.playlistsIfDeclined
+                }
+                if (eligible.isEmpty()) PlaylistUiState.Empty else PlaylistUiState.Content(
+                    playlists = eligible,
+                    selectedPlaylistId = current.selectedPlaylistId,
+                )
+            }
+        }
     }
 
     fun clearForSessionInvalidation() {

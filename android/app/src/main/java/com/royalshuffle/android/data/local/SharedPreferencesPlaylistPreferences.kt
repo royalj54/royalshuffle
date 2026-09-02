@@ -24,10 +24,30 @@ class SharedPreferencesPlaylistPreferences internal constructor(
         preferences.getStringSet(KEY_MANAGED_PLAYLIST_IDS, emptySet()).orEmpty().toSet()
 
     override suspend fun addManagedPlaylistId(playlistId: String): Boolean =
+        addManagedPlaylistIds(setOf(playlistId))
+
+    override suspend fun addManagedPlaylistIds(playlistIds: Set<String>): Boolean =
         withContext(ioDispatcher) {
             try {
-                val updatedIds = loadManagedPlaylistIds() + playlistId
+                val updatedIds = loadManagedPlaylistIds() + playlistIds
                 preferences.edit().putStringSet(KEY_MANAGED_PLAYLIST_IDS, updatedIds).commit()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+    override fun loadDeclinedRecoveryPlaylistIds(): Set<String> =
+        preferences.getStringSet(KEY_DECLINED_RECOVERY_PLAYLIST_IDS, emptySet()).orEmpty().toSet()
+
+    override suspend fun addDeclinedRecoveryPlaylistIds(playlistIds: Set<String>): Boolean =
+        withContext(ioDispatcher) {
+            try {
+                val updatedIds = loadDeclinedRecoveryPlaylistIds() + playlistIds
+                preferences.edit()
+                    .putStringSet(KEY_DECLINED_RECOVERY_PLAYLIST_IDS, updatedIds)
+                    .commit()
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -49,6 +69,7 @@ class SharedPreferencesPlaylistPreferences internal constructor(
     private companion object {
         const val FILE_NAME = "royalshuffle_playlists"
         const val KEY_MANAGED_PLAYLIST_IDS = "managed_playlist_ids"
+        const val KEY_DECLINED_RECOVERY_PLAYLIST_IDS = "declined_recovery_playlist_ids"
         const val KEY_SELECTED_PLAYLIST_ID = "selected_playlist_id"
     }
 }
