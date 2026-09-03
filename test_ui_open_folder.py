@@ -12,7 +12,7 @@ class OpenRoyalShuffleFolderTests(unittest.TestCase):
         with patch(
             "ui.ensure_royalshuffle_folder",
             return_value=folder,
-        ), patch("ui.os.startfile") as startfile, patch(
+        ), patch("ui.os.startfile", create=True) as startfile, patch(
             "ui.messagebox.showerror"
         ) as showerror:
             ui.open_royalshuffle_folder(Mock())
@@ -28,7 +28,7 @@ class OpenRoyalShuffleFolderTests(unittest.TestCase):
         with patch(
             "ui.ensure_royalshuffle_folder",
             return_value=folder,
-        ), patch("ui.os.startfile") as startfile:
+        ), patch("ui.os.startfile", create=True) as startfile:
             ui.open_royalshuffle_folder(Mock())
 
         startfile.assert_called_once_with(str(folder))
@@ -39,7 +39,7 @@ class OpenRoyalShuffleFolderTests(unittest.TestCase):
         with patch(
             "ui.ensure_royalshuffle_folder",
             return_value=None,
-        ), patch("ui.os.startfile") as startfile, patch(
+        ), patch("ui.os.startfile", create=True) as startfile, patch(
             "ui.log_debug"
         ) as log_debug, patch(
             "ui.messagebox.showerror"
@@ -68,6 +68,7 @@ class OpenRoyalShuffleFolderTests(unittest.TestCase):
         ), patch(
             "ui.os.startfile",
             side_effect=error,
+            create=True,
         ), patch("ui.log_debug") as log_debug, patch(
             "ui.messagebox.showerror"
         ) as showerror:

@@ -1,4 +1,5 @@
 from auth import authenticate, log_debug
+from app_metadata import MANAGED_PLAYLIST_DESCRIPTION
 from playlist_selector import select_playlist
 from playlist_registry import (
     add_managed_playlist_id,
@@ -84,8 +85,7 @@ def royal_shuffle(
         playlist = spotify.create_playlist(
             name=output_playlist_name,
             description=(
-                "True-randomized copy generated "
-                "by RoyalShuffle"
+                MANAGED_PLAYLIST_DESCRIPTION
             ),
             public=False,
         )

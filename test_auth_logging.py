@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -70,6 +72,55 @@ class AuthLoggingTests(unittest.TestCase):
                 return_value=unwritable_destination,
             ):
                 auth.log_debug("suppressed failure")
+
+
+class TokenPersistenceTests(unittest.TestCase):
+    def test_missing_token_file_returns_none(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            token_file = Path(temporary_directory) / "missing.json"
+            with patch.object(auth, "TOKEN_FILE", token_file):
+                self.assertIsNone(auth.load_token_data())
+
+    def test_corrupt_token_file_returns_none(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            token_file = Path(temporary_directory) / "token.json"
+            token_file.write_text("not json", encoding="utf-8")
+            with patch.object(auth, "TOKEN_FILE", token_file), patch(
+                "auth.log_debug"
+            ):
+                self.assertIsNone(auth.load_token_data())
+
+    def test_token_write_is_atomic_and_replaces_existing_data(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            token_file = Path(temporary_directory) / "config" / "token.json"
+            token_data = {
+                "access_token": "new-access",
+                "refresh_token": "new-refresh",
+            }
+            with patch.object(auth, "TOKEN_FILE", token_file), patch(
+                "auth.os.replace",
+                wraps=os.replace,
+            ) as replace:
+                auth.save_token_data(token_data)
+
+            replace.assert_called_once()
+            self.assertEqual(
+                json.loads(token_file.read_text(encoding="utf-8")),
+                token_data,
+            )
+            self.assertEqual(list(token_file.parent.glob("*.tmp")), [])
+
+    def test_posix_token_write_requests_owner_only_permissions(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            token_file = Path(temporary_directory) / "token.json"
+            with patch.object(auth, "TOKEN_FILE", token_file), patch(
+                "auth._is_windows",
+                return_value=False,
+            ), patch("auth.os.chmod") as chmod:
+                auth.save_token_data({"access_token": "access"})
+
+            chmod.assert_called_once()
+            self.assertEqual(chmod.call_args.args[1], 0o600)
 
 
 if __name__ == "__main__":

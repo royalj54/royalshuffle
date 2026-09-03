@@ -1,4 +1,5 @@
 import ctypes
+import os
 import uuid
 from pathlib import Path
 
@@ -24,7 +25,14 @@ COINIT_APARTMENTTHREADED = 0x2
 RPC_E_CHANGED_MODE = -2147417850
 
 
+def _is_windows():
+    return os.name == "nt"
+
+
 def documents_folder():
+    if not _is_windows():
+        raise OSError("The Windows Documents folder is only available on Windows")
+
     shell32 = ctypes.WinDLL("shell32", use_last_error=True)
     ole32 = ctypes.WinDLL("ole32", use_last_error=True)
 
@@ -74,8 +82,65 @@ def documents_folder():
             ole32.CoUninitialize()
 
 
+def _xdg_folder(environment_variable, default_relative_path):
+    configured_path = os.environ.get(environment_variable)
+    if configured_path:
+        return Path(configured_path).expanduser() / "royalshuffle"
+
+    return Path.home() / default_relative_path / "royalshuffle"
+
+
+def config_folder():
+    if _is_windows():
+        return Path.home()
+
+    return _xdg_folder("XDG_CONFIG_HOME", Path(".config"))
+
+
+def state_folder():
+    if _is_windows():
+        return Path.home()
+
+    return _xdg_folder("XDG_STATE_HOME", Path(".local") / "state")
+
+
+def data_folder():
+    if _is_windows():
+        return documents_folder() / "RoyalShuffle"
+
+    return _xdg_folder("XDG_DATA_HOME", Path(".local") / "share")
+
+
+def token_file():
+    if _is_windows():
+        return Path.home() / ".royalshuffle_token.json"
+
+    return config_folder() / "token.json"
+
+
+def managed_playlists_file():
+    if _is_windows():
+        return Path.home() / ".royalshuffle_managed_playlists.json"
+
+    return state_folder() / "managed_playlists.json"
+
+
+def legacy_recovery_file():
+    if _is_windows():
+        return Path.home() / ".royalshuffle_legacy_recovery.json"
+
+    return state_folder() / "legacy_recovery.json"
+
+
+def last_playlist_file():
+    if _is_windows():
+        return Path.home() / ".royalshuffle_last_playlist"
+
+    return state_folder() / "last_playlist"
+
+
 def royalshuffle_folder():
-    return documents_folder() / "RoyalShuffle"
+    return data_folder()
 
 
 def exports_folder():
@@ -83,7 +148,10 @@ def exports_folder():
 
 
 def diagnostics_folder():
-    return royalshuffle_folder() / "Diagnostics"
+    if _is_windows():
+        return royalshuffle_folder() / "Diagnostics"
+
+    return state_folder() / "Diagnostics"
 
 
 def _ensure_folder(path_provider):

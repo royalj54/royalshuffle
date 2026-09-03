@@ -1,11 +1,10 @@
 import json
-from pathlib import Path
+
+from app_paths import legacy_recovery_file, managed_playlists_file
 
 
-REGISTRY_FILE = Path.home() / ".royalshuffle_managed_playlists.json"
-LEGACY_RECOVERY_FILE = (
-    Path.home() / ".royalshuffle_legacy_recovery.json"
-)
+REGISTRY_FILE = managed_playlists_file()
+LEGACY_RECOVERY_FILE = legacy_recovery_file()
 
 
 def load_managed_playlist_ids():
@@ -37,6 +36,7 @@ def add_managed_playlist_id(playlist_id):
         return
 
     playlist_ids.add(playlist_id)
+    REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
     temporary_file = REGISTRY_FILE.with_suffix(".tmp")
     temporary_file.write_text(
         json.dumps(
@@ -77,6 +77,7 @@ def add_reviewed_legacy_playlist_id(playlist_id):
         return
 
     playlist_ids.add(playlist_id)
+    LEGACY_RECOVERY_FILE.parent.mkdir(parents=True, exist_ok=True)
     temporary_file = LEGACY_RECOVERY_FILE.with_suffix(".tmp")
     temporary_file.write_text(
         json.dumps(

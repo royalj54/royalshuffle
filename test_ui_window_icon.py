@@ -27,7 +27,7 @@ class WindowIconTests(unittest.TestCase):
 
         self.assertEqual(
             result,
-            module_path.parent / "assets" / "royalshuffle.ico",
+            module_path.resolve().parent / "assets" / "royalshuffle.ico",
         )
 
     @patch("ui.log_debug")

@@ -7,15 +7,20 @@ import webbrowser
 import requests
 import threading
 import json
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from app_paths import ensure_diagnostics_folder
+from app_paths import ensure_diagnostics_folder, token_file
 
-TOKEN_FILE = Path.home() / ".royalshuffle_token.json"
+TOKEN_FILE = token_file()
 LEGACY_LOG_FILE = Path.home() / ".royalshuffle_debug.log"
 _active_debug_log_file = None
+
+
+def _is_windows():
+    return os.name == "nt"
 
 
 def _get_debug_log_file():
@@ -64,9 +69,31 @@ SCOPES = " ".join([
 
 def save_token_data(token_data):
     log_debug(f"Saving token data to {TOKEN_FILE}")
-    TOKEN_FILE.write_text(
-        json.dumps(token_data, indent=2)
-    )
+    TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=TOKEN_FILE.parent,
+            prefix=f".{TOKEN_FILE.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+            json.dump(token_data, temporary_file, indent=2)
+            temporary_file.write("\n")
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+
+        if not _is_windows():
+            os.chmod(temporary_path, 0o600)
+
+        os.replace(temporary_path, TOKEN_FILE)
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
+
     log_debug("Token data saved successfully")
 
 class SpotifyCallbackHandler(BaseHTTPRequestHandler):
@@ -238,9 +265,13 @@ def load_token_data():
         return None
 
     log_debug(f"Loading saved Spotify token data from {TOKEN_FILE}")
-    return json.loads(
-        TOKEN_FILE.read_text()
-    )
+    try:
+        return json.loads(
+            TOKEN_FILE.read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError):
+        log_debug("Saved Spotify token data could not be read")
+        return None
 
 
 def refresh_access_token(refresh_token):

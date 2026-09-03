@@ -48,9 +48,10 @@ class AppPathsTests(unittest.TestCase):
             lambda: calls.__setitem__("uninitialized", True)
         )
 
-        with patch(
+        with patch("app_paths._is_windows", return_value=True), patch(
             "app_paths.ctypes.WinDLL",
             side_effect=[shell32, ole32],
+            create=True,
         ):
             result = app_paths.documents_folder()
 
@@ -60,7 +61,10 @@ class AppPathsTests(unittest.TestCase):
 
     def test_user_folders_are_composed_below_documents(self):
         documents = Path(r"D:\User Documents")
-        with patch("app_paths.documents_folder", return_value=documents):
+        with patch("app_paths._is_windows", return_value=True), patch(
+            "app_paths.documents_folder",
+            return_value=documents,
+        ):
             self.assertEqual(
                 app_paths.royalshuffle_folder(),
                 documents / "RoyalShuffle",
@@ -74,12 +78,95 @@ class AppPathsTests(unittest.TestCase):
                 documents / "RoyalShuffle" / "Diagnostics",
             )
 
+    def test_windows_state_files_keep_existing_home_locations(self):
+        home = Path(r"C:\Users\Example")
+        with patch("app_paths._is_windows", return_value=True), patch(
+            "app_paths.Path.home",
+            return_value=home,
+        ):
+            self.assertEqual(
+                app_paths.token_file(),
+                home / ".royalshuffle_token.json",
+            )
+            self.assertEqual(
+                app_paths.managed_playlists_file(),
+                home / ".royalshuffle_managed_playlists.json",
+            )
+            self.assertEqual(
+                app_paths.legacy_recovery_file(),
+                home / ".royalshuffle_legacy_recovery.json",
+            )
+            self.assertEqual(
+                app_paths.last_playlist_file(),
+                home / ".royalshuffle_last_playlist",
+            )
+
+    def test_posix_paths_use_xdg_locations_without_windows_api(self):
+        home = Path("/home/example")
+        environment = {
+            "XDG_CONFIG_HOME": "/custom/config",
+            "XDG_STATE_HOME": "/custom/state",
+            "XDG_DATA_HOME": "/custom/data",
+        }
+        with patch("app_paths._is_windows", return_value=False), patch(
+            "app_paths.Path.home",
+            return_value=home,
+        ), patch.dict("app_paths.os.environ", environment, clear=True), patch(
+            "app_paths.ctypes.WinDLL",
+            create=True,
+        ) as win_dll:
+            self.assertEqual(
+                app_paths.config_folder(),
+                Path("/custom/config/royalshuffle"),
+            )
+            self.assertEqual(
+                app_paths.state_folder(),
+                Path("/custom/state/royalshuffle"),
+            )
+            self.assertEqual(
+                app_paths.data_folder(),
+                Path("/custom/data/royalshuffle"),
+            )
+            self.assertEqual(
+                app_paths.token_file(),
+                Path("/custom/config/royalshuffle/token.json"),
+            )
+            self.assertEqual(
+                app_paths.diagnostics_folder(),
+                Path("/custom/state/royalshuffle/Diagnostics"),
+            )
+            self.assertEqual(
+                app_paths.exports_folder(),
+                Path("/custom/data/royalshuffle/Exports"),
+            )
+
+        win_dll.assert_not_called()
+
+    def test_posix_paths_fall_back_to_home_xdg_defaults(self):
+        home = Path("/home/example")
+        with patch("app_paths._is_windows", return_value=False), patch(
+            "app_paths.Path.home",
+            return_value=home,
+        ), patch.dict("app_paths.os.environ", {}, clear=True):
+            self.assertEqual(
+                app_paths.config_folder(),
+                home / ".config" / "royalshuffle",
+            )
+            self.assertEqual(
+                app_paths.state_folder(),
+                home / ".local" / "state" / "royalshuffle",
+            )
+            self.assertEqual(
+                app_paths.data_folder(),
+                home / ".local" / "share" / "royalshuffle",
+            )
+
     def test_folders_are_created_lazily(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             documents = Path(temporary_directory) / "Documents"
             exports = documents / "RoyalShuffle" / "Exports"
 
-            with patch(
+            with patch("app_paths._is_windows", return_value=True), patch(
                 "app_paths.documents_folder",
                 return_value=documents,
             ):

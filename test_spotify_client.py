@@ -13,6 +13,7 @@ except ModuleNotFoundError:
     requests.put = Mock()
     sys.modules["requests"] = requests
 
+from app_metadata import MANAGED_PLAYLIST_DESCRIPTION
 from spotify_client import (
     SPOTIFY_DEVELOPER_QUOTA_MESSAGE,
     SpotifyClient,
@@ -432,6 +433,11 @@ class RoyalShuffleWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(result["item_count"], 2)
         self.assertEqual(result["skipped_item_count"], 2)
+        spotify.create_playlist.assert_called_once_with(
+            name="Source - RANDOM",
+            description=MANAGED_PLAYLIST_DESCRIPTION,
+            public=False,
+        )
         self.assertTrue(any(
             "Skipping 2 local Spotify items" in message
             for message in status_messages
