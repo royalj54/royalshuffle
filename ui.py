@@ -17,7 +17,12 @@ from auth import (
     log_debug,
 )
 
-from spotify_client import SpotifyClient, SpotifyRetryLaterError
+from spotify_client import (
+    SPOTIFY_DEVELOPER_QUOTA_MESSAGE,
+    SpotifyClient,
+    SpotifyQuotaExceededError,
+    SpotifyRetryLaterError,
+)
 from playlist_export import export_playlist_csv
 from playlist_import import (
     PlaylistImportValidationError,
@@ -263,11 +268,25 @@ def import_csv_playlist(parent, spotify, status_label, import_button):
         )
         return None
     except PlaylistImportPartialWriteError as exc:
+        partial_status = (
+            f"Partially created: {exc.playlist_name} • "
+            f"{exc.items_written}/{exc.total_items} tracks added"
+        )
+        quota_exceeded = isinstance(
+            exc.cause,
+            SpotifyQuotaExceededError,
+        )
         status_label.config(
             text=(
-                f"Partially created: {exc.playlist_name} • "
-                f"{exc.items_written}/{exc.total_items} tracks added"
+                f"{SPOTIFY_DEVELOPER_QUOTA_MESSAGE} {partial_status}"
+                if quota_exceeded
+                else partial_status
             )
+        )
+        quota_detail = (
+            f"\n\n{SPOTIFY_DEVELOPER_QUOTA_MESSAGE}"
+            if quota_exceeded
+            else ""
         )
         messagebox.showerror(
             "CSV Import Incomplete",
@@ -275,7 +294,7 @@ def import_csv_playlist(parent, spotify, status_label, import_button):
                 f'Playlist "{exc.playlist_name}" was partially created.\n\n'
                 f"{exc.items_written} of {exc.total_items} tracks were added. "
                 "The remaining tracks were not added. The partial private "
-                "playlist was left in Spotify."
+                f"playlist was left in Spotify.{quota_detail}"
             ),
             parent=parent,
         )

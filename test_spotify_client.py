@@ -14,7 +14,9 @@ except ModuleNotFoundError:
     sys.modules["requests"] = requests
 
 from spotify_client import (
+    SPOTIFY_DEVELOPER_QUOTA_MESSAGE,
     SpotifyClient,
+    SpotifyQuotaExceededError,
     SpotifyRetryLaterError,
     SpotifyTrackNotFoundError,
 )
@@ -148,7 +150,7 @@ class SpotifyClientTests(unittest.TestCase):
         self,
         post,
         sleep,
-        _log_debug,
+        log_debug,
     ):
         post.return_value = response(
             429,
@@ -160,16 +162,40 @@ class SpotifyClientTests(unittest.TestCase):
             },
         )
 
-        with self.assertRaisesRegex(
-            SpotifyRetryLaterError,
-            "quota is currently exhausted",
-        ):
+        with self.assertRaises(SpotifyQuotaExceededError) as caught:
             self.client.add_playlist_items(
                 "playlist-id",
                 ["uri"] * 100,
             )
 
+        self.assertEqual(
+            str(caught.exception),
+            SPOTIFY_DEVELOPER_QUOTA_MESSAGE,
+        )
         post.assert_called_once()
+        sleep.assert_not_called()
+        self.assertTrue(any(
+            "reason='QUOTA_EXCEEDED'" in args[0]
+            for args, _kwargs in log_debug.call_args_list
+        ))
+
+    @patch("spotify_client.time.sleep")
+    @patch("spotify_client.requests.get")
+    def test_playlist_fetch_surfaces_developer_quota(self, get, sleep):
+        get.return_value = response(
+            429,
+            retry_after="2",
+            payload={"error": {"reason": "QUOTA_EXCEEDED"}},
+        )
+
+        with self.assertRaises(SpotifyQuotaExceededError) as caught:
+            self.client.get_playlist_items("playlist-id")
+
+        self.assertEqual(
+            str(caught.exception),
+            SPOTIFY_DEVELOPER_QUOTA_MESSAGE,
+        )
+        get.assert_called_once()
         sleep.assert_not_called()
 
     @patch("spotify_client.log_debug")
@@ -294,6 +320,20 @@ class SpotifyClientTests(unittest.TestCase):
             )
 
         post.assert_called_once()
+
+    @patch("spotify_client.requests.get")
+    def test_authentication_failure_remains_http_error(self, get):
+        get.return_value = response(401)
+
+        with self.assertRaises(requests.HTTPError):
+            self.client.get_playlists()
+
+    @patch("spotify_client.requests.get")
+    def test_server_failure_remains_http_error(self, get):
+        get.return_value = response(503)
+
+        with self.assertRaises(requests.HTTPError):
+            self.client.get_playlists()
 
     @patch("spotify_client.log_debug")
     @patch("spotify_client.requests.post")

@@ -14,6 +14,10 @@ except ModuleNotFoundError:
     sys.modules["requests"] = requests
 
 import ui
+from spotify_client import (
+    SPOTIFY_DEVELOPER_QUOTA_MESSAGE,
+    SpotifyQuotaExceededError,
+)
 from playlist_import import (
     PlaylistImportRow,
     PlaylistImportValidationError,
@@ -184,6 +188,61 @@ class CsvImportUiTests(unittest.TestCase):
         self.assertIn("100 of 150", showerror.call_args.args[1])
         self.assertNotIn("secret", showerror.call_args.args[1])
         self.spotify.clear_playlist.assert_not_called()
+
+    @patch("ui.messagebox.showerror")
+    @patch("ui.create_imported_playlist")
+    @patch("ui.simpledialog.askstring", return_value="Partial")
+    @patch("ui.preflight_playlist_import", return_value=Mock())
+    @patch("ui.parse_playlist_csv", return_value=(ROW,))
+    @patch("ui.choose_csv_source", return_value="playlist.csv")
+    def test_partial_write_quota_message_preserves_partial_details(
+        self,
+        _choose,
+        _parse,
+        _preflight,
+        _askstring,
+        create_imported_playlist,
+        showerror,
+    ):
+        quota_error = SpotifyQuotaExceededError(
+            SPOTIFY_DEVELOPER_QUOTA_MESSAGE
+        )
+        create_imported_playlist.side_effect = PlaylistImportPartialWriteError(
+            "playlist-id", "Partial", 100, 150, quota_error
+        )
+
+        ui.import_csv_playlist(
+            self.parent, self.spotify, self.status, self.button
+        )
+
+        status_message = self.status.config.call_args_list[-1].kwargs["text"]
+        self.assertIn(SPOTIFY_DEVELOPER_QUOTA_MESSAGE, status_message)
+        self.assertIn("100/150 tracks added", status_message)
+        message = showerror.call_args.args[1]
+        self.assertIn("100 of 150", message)
+        self.assertIn(SPOTIFY_DEVELOPER_QUOTA_MESSAGE, message)
+        self.spotify.clear_playlist.assert_not_called()
+
+    @patch("ui.preflight_playlist_import")
+    @patch("ui.parse_playlist_csv", return_value=(ROW,))
+    @patch("ui.choose_csv_source", return_value="playlist.csv")
+    def test_preflight_quota_message_is_explicit(
+        self,
+        _choose,
+        _parse,
+        preflight,
+    ):
+        preflight.side_effect = SpotifyQuotaExceededError(
+            SPOTIFY_DEVELOPER_QUOTA_MESSAGE
+        )
+
+        ui.import_csv_playlist(
+            self.parent, self.spotify, self.status, self.button
+        )
+
+        self.status.config.assert_any_call(
+            text=SPOTIFY_DEVELOPER_QUOTA_MESSAGE
+        )
 
     @patch("ui.LAST_PLAYLIST_FILE")
     @patch("ui.load_managed_playlist_ids", return_value=set())

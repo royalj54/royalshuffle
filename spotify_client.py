@@ -10,9 +10,17 @@ from auth import log_debug
 RATE_LIMIT_FALLBACK_SECONDS = 1
 MAX_AUTOMATIC_RETRY_AFTER_SECONDS = 60
 MAX_RATE_LIMIT_RETRIES = 3
+SPOTIFY_DEVELOPER_QUOTA_MESSAGE = (
+    "Spotify developer quota exceeded. RoyalShuffle cannot make "
+    "additional Spotify requests right now. Try again later."
+)
 
 
 class SpotifyRetryLaterError(Exception):
+    pass
+
+
+class SpotifyQuotaExceededError(SpotifyRetryLaterError):
     pass
 
 
@@ -92,9 +100,8 @@ class SpotifyClient:
             )
 
             if rate_limit_reason == "QUOTA_EXCEEDED":
-                raise SpotifyRetryLaterError(
-                    "Spotify's API quota is currently exhausted. "
-                    "Please try again later."
+                raise SpotifyQuotaExceededError(
+                    SPOTIFY_DEVELOPER_QUOTA_MESSAGE
                 )
 
             delay = self._retry_after_delay(retry_after)
