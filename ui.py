@@ -12,7 +12,6 @@ from auth import (
     wait_for_spotify_callback,
     save_token_data,
     load_token_data,
-    refresh_access_token,
     clear_token_data,
     log_debug,
 )
@@ -25,6 +24,7 @@ from spotify_client import (
 )
 from app_metadata import APP_VERSION, MANAGED_PLAYLIST_DESCRIPTION
 from playlist_export import export_playlist_csv
+from playlist_service import eligible_source_playlists
 from playlist_import import (
     PlaylistImportValidationError,
     parse_playlist_csv,
@@ -36,6 +36,7 @@ from playlist_import_workflow import (
     preflight_playlist_import,
 )
 from royalshuffle import royal_shuffle
+from session_service import refresh_saved_token_data
 from playlist_registry import (
     add_managed_playlist_id,
     add_reviewed_legacy_playlist_id,
@@ -428,11 +429,9 @@ def load_spotify_session(
 
     managed_playlist_ids = load_managed_playlist_ids()
     eligible_playlists.clear()
-    eligible_playlists.extend([
-        playlist
-        for playlist in playlists
-        if playlist["id"] not in managed_playlist_ids
-    ])
+    eligible_playlists.extend(
+        eligible_source_playlists(playlists, managed_playlist_ids)
+    )
 
     playlist_listbox.config(state="normal")
     import_csv_button.config(state="normal")
@@ -932,32 +931,14 @@ def main():
             log_debug("No saved Spotify session available")
             return
 
-        refresh_token = saved_token_data.get(
-            "refresh_token"
-        )
-
-        if not refresh_token:
-            log_debug("Saved Spotify token data has no refresh token")
-            return
-
         status_label.config(
             text="Reconnecting to Spotify..."
         )
 
         try:
-            refreshed_token_data = refresh_access_token(
-                refresh_token
-            )
-
-            saved_token_data.update(
-                refreshed_token_data
-            )
-
-            save_token_data(saved_token_data)
-
-            access_token = saved_token_data[
-                "access_token"
-            ]
+            access_token = refresh_saved_token_data(
+                saved_token_data
+            )["access_token"]
 
             load_spotify_session(
                 access_token,

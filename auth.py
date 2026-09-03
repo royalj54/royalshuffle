@@ -67,6 +67,10 @@ SCOPES = " ".join([
     "playlist-modify-public",
 ])
 
+
+class SpotifyAuthenticationError(RuntimeError):
+    pass
+
 def save_token_data(token_data):
     log_debug(f"Saving token data to {TOKEN_FILE}")
     TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -164,7 +168,7 @@ def create_code_challenge(verifier):
     )
 
 
-def start_authentication():
+def create_authentication_session():
     log_debug("Starting Spotify PKCE authentication")
     code_verifier = create_code_verifier()
     code_challenge = create_code_challenge(code_verifier)
@@ -186,14 +190,24 @@ def start_authentication():
         + urllib.parse.urlencode(params)
     )
 
-    browser_opened = webbrowser.open(auth_url)
-    log_debug(f"Spotify authorization URL sent to browser; webbrowser result={browser_opened}")
-
     return {
         "auth_url": auth_url,
         "code_verifier": code_verifier,
         "state": state,
     }
+
+
+def open_authentication_browser(auth_url):
+    browser_opened = webbrowser.open(auth_url)
+    log_debug(f"Spotify authorization URL sent to browser; webbrowser result={browser_opened}")
+    return browser_opened
+
+
+def start_authentication():
+    auth_session = create_authentication_session()
+    open_authentication_browser(auth_session["auth_url"])
+
+    return auth_session
 
 
 def finish_authentication(callback_url, code_verifier, state):
@@ -204,17 +218,21 @@ def finish_authentication(callback_url, code_verifier, state):
     if "error" in query:
         error = query["error"][0]
         log_debug(f"Spotify authorization failed before token exchange: {error}")
-        raise RuntimeError(error)
+        raise SpotifyAuthenticationError(error)
 
     returned_state = query.get("state", [None])[0]
 
     if returned_state != state:
         log_debug("Spotify callback state mismatch")
-        raise RuntimeError("State mismatch. Aborting.")
+        raise SpotifyAuthenticationError("State mismatch. Aborting.")
 
     log_debug("Spotify callback state validated")
 
-    code = query["code"][0]
+    code = query.get("code", [None])[0]
+    if not code:
+        raise SpotifyAuthenticationError(
+            "Spotify callback did not contain an authorization code."
+        )
 
     log_debug("Requesting Spotify access token")
 
@@ -272,6 +290,10 @@ def load_token_data():
     except (OSError, json.JSONDecodeError):
         log_debug("Saved Spotify token data could not be read")
         return None
+
+
+def saved_token_file_exists():
+    return TOKEN_FILE.is_file()
 
 
 def refresh_access_token(refresh_token):

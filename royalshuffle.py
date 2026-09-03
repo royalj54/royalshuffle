@@ -1,6 +1,7 @@
 from auth import authenticate, log_debug
 from app_metadata import MANAGED_PLAYLIST_DESCRIPTION
 from playlist_selector import select_playlist
+from playlist_service import eligible_source_playlists
 from playlist_registry import (
     add_managed_playlist_id,
     load_managed_playlist_ids,
@@ -141,11 +142,10 @@ def main():
     print()
 
     managed_playlist_ids = load_managed_playlist_ids()
-    playlists = [
-        playlist
-        for playlist in spotify.get_playlists()
-        if playlist["id"] not in managed_playlist_ids
-    ]
+    playlists = eligible_source_playlists(
+        spotify.get_playlists(),
+        managed_playlist_ids,
+    )
 
     if not playlists:
         print()

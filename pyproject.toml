@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "royalshuffle"
+dynamic = ["version"]
+description = "Transparent, user-controlled true random shuffle for Spotify playlists"
+requires-python = ">=3.10"
+dependencies = ["requests==2.34.2"]
+
+[project.scripts]
+royalshuffle = "cli:main"
+
+[tool.setuptools]
+py-modules = [
+    "app_metadata",
+    "app_paths",
+    "auth",
+    "cli",
+    "playlist_export",
+    "playlist_import",
+    "playlist_import_workflow",
+    "playlist_registry",
+    "playlist_selector",
+    "playlist_service",
+    "royalshuffle",
+    "session_service",
+    "shuffle_engine",
+    "spotify_client",
+    "ui",
+]
+
+[tool.setuptools.dynamic]
+version = {attr = "app_metadata.APP_VERSION"}
