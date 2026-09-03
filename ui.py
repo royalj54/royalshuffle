@@ -35,7 +35,7 @@ from playlist_import_workflow import (
     create_imported_playlist,
     preflight_playlist_import,
 )
-from royalshuffle import royal_shuffle
+from royalshuffle import RoyalShufflePartialWriteError, royal_shuffle
 from session_service import refresh_saved_token_data
 from playlist_registry import (
     add_managed_playlist_id,
@@ -808,14 +808,36 @@ def main():
 
             status_label.config(
                 text=(
-                    f'{result["action"].title()}: '
-                    f'{result["name"]} '
-                    f' • {result["item_count"]} items'
+                    f'{result.action.title()}: '
+                    f'{result.output_name} '
+                    f' • {result.items_written} items'
                     + (
-                        f' • {result["skipped_item_count"]} local skipped'
-                        if result["skipped_item_count"]
+                        f' • {result.skipped_item_count} local skipped'
+                        if result.skipped_item_count
                         else ""
                     )
+                )
+            )
+
+        except RoyalShufflePartialWriteError as exc:
+            if isinstance(exc.cause, KeyboardInterrupt):
+                raise exc.cause
+            log_debug(
+                "Royal Shuffle output incomplete; "
+                f"output_playlist_id={exc.result.output_id}; "
+                f"items_written={exc.result.items_written}; "
+                f"total_items={exc.result.total_items}; "
+                f"exception_type={type(exc.cause).__name__}"
+            )
+            if isinstance(exc.cause, SpotifyRetryLaterError):
+                message = str(exc.cause)
+            else:
+                message = "Royal Shuffle failed. Please try again."
+            status_label.config(
+                text=(
+                    f"{message} Output preserved with "
+                    f"{exc.result.items_written}/{exc.result.total_items} "
+                    "confirmed items."
                 )
             )
 

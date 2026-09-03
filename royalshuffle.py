@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from auth import authenticate, log_debug
 from app_metadata import MANAGED_PLAYLIST_DESCRIPTION
 from playlist_selector import select_playlist
@@ -8,6 +10,25 @@ from playlist_registry import (
 )
 from shuffle_engine import shuffle_items
 from spotify_client import SpotifyClient
+
+
+@dataclass(frozen=True)
+class RoyalShuffleResult:
+    source_name: str
+    source_id: str
+    output_name: str
+    output_id: str
+    total_items: int
+    items_written: int
+    skipped_item_count: int
+    action: str
+
+
+class RoyalShufflePartialWriteError(Exception):
+    def __init__(self, result, cause):
+        self.result = result
+        self.cause = cause
+        super().__init__("Royal Shuffle output was only partially written")
 
 def royal_shuffle(
     spotify, 
@@ -92,7 +113,20 @@ def royal_shuffle(
         )
 
         output_playlist_id = playlist["id"]
-        add_managed_playlist_id(output_playlist_id)
+        try:
+            add_managed_playlist_id(output_playlist_id)
+        except Exception as exc:
+            result = RoyalShuffleResult(
+                source_name=source_playlist["name"],
+                source_id=source_playlist_id,
+                output_name=output_playlist_name,
+                output_id=output_playlist_id,
+                total_items=len(items),
+                items_written=0,
+                skipped_item_count=skipped_item_count,
+                action=playlist_action,
+            )
+            raise RoyalShufflePartialWriteError(result, exc) from exc
 
     report_status(
         f'Updating {output_playlist_name}...'
@@ -103,30 +137,45 @@ def royal_shuffle(
             "The output playlist cannot be the source playlist."
         )
 
-    spotify.clear_playlist(output_playlist_id)
-    
     uris = [
         item["uri"]
         for item in items
     ]
 
-    spotify.add_playlist_items(
-        output_playlist_id,
-        uris,
-    )
+    try:
+        spotify.clear_playlist(output_playlist_id)
+        items_written = spotify.add_playlist_items(
+            output_playlist_id,
+            uris,
+        )
+    except (Exception, KeyboardInterrupt) as exc:
+        result = RoyalShuffleResult(
+            source_name=source_playlist["name"],
+            source_id=source_playlist_id,
+            output_name=output_playlist_name,
+            output_id=output_playlist_id,
+            total_items=len(uris),
+            items_written=getattr(exc, "items_written", 0),
+            skipped_item_count=skipped_item_count,
+            action=playlist_action,
+        )
+        raise RoyalShufflePartialWriteError(result, exc) from exc
 
     report_status(
         f'{playlist_action.title()} '
         f'{output_playlist_name} with {len(uris)} items'
     )
 
-    return {
-        "name": output_playlist_name,
-        "id": output_playlist_id,
-        "item_count": len(uris),
-        "skipped_item_count": skipped_item_count,
-        "action": playlist_action,
-    }
+    return RoyalShuffleResult(
+        source_name=source_playlist["name"],
+        source_id=source_playlist_id,
+        output_name=output_playlist_name,
+        output_id=output_playlist_id,
+        total_items=len(uris),
+        items_written=items_written,
+        skipped_item_count=skipped_item_count,
+        action=playlist_action,
+    )
 
 def main():
     # Authenticate with Spotify
@@ -170,13 +219,13 @@ def main():
     print()
     print("SUCCESS.")
     print(
-        f'"{result["name"]}" now contains '
-        f'{result["item_count"]} items in true-random order.'
+        f'"{result.output_name}" now contains '
+        f'{result.items_written} items in true-random order.'
     )
 
-    if result["skipped_item_count"]:
+    if result.skipped_item_count:
         print(
-            f'{result["skipped_item_count"]} local Spotify items '
+            f'{result.skipped_item_count} local Spotify items '
             "were skipped because they cannot be copied."
         )
 

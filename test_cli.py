@@ -10,6 +10,8 @@ import requests
 
 import cli
 from app_metadata import APP_VERSION
+from playlist_service import AmbiguousPlaylistSourceError, ManagedPlaylistSourceError
+from royalshuffle import RoyalShufflePartialWriteError, RoyalShuffleResult
 from session_service import InvalidSavedSessionError, NoSavedSessionError
 from spotify_client import SpotifyQuotaExceededError, SpotifyRetryLaterError
 
@@ -170,6 +172,102 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result, cli.EXIT_NO_ELIGIBLE_PLAYLISTS)
         self.assertEqual(stdout, "")
         self.assertIn("No eligible source playlists", stderr)
+
+    @patch("cli.royal_shuffle")
+    @patch("cli.resolve_source_playlist")
+    @patch("cli.load_managed_playlist_ids", return_value={"managed-id"})
+    @patch("cli.restore_spotify_client")
+    def test_shuffle_resolves_and_prints_structured_success(
+        self, restore, _load_ids, resolve, shuffle
+    ):
+        client = restore.return_value
+        client.get_playlists.return_value = [{"id": "source-id", "name": "Source"}]
+        source = client.get_playlists.return_value[0]
+        resolve.return_value = source
+        shuffle.return_value = RoyalShuffleResult(
+            source_name="Source",
+            source_id="source-id",
+            output_name="Source - RANDOM",
+            output_id="output-id",
+            total_items=2,
+            items_written=2,
+            skipped_item_count=0,
+            action="created",
+        )
+
+        result, stdout, stderr = self.run_cli(["shuffle", "spotify:playlist:source-id"])
+
+        self.assertEqual(result, cli.EXIT_SUCCESS)
+        self.assertEqual(stderr, "")
+        self.assertIn("Tracks written: 2/2", stdout)
+        self.assertIn("Output playlist ID: output-id", stdout)
+        resolve.assert_called_once_with(
+            client.get_playlists.return_value,
+            "spotify:playlist:source-id",
+            {"managed-id"},
+        )
+        shuffle.assert_called_once_with(client, source)
+
+    def test_shuffle_selection_errors_are_usage_failures(self):
+        failures = (
+            AmbiguousPlaylistSourceError("ambiguous"),
+            ManagedPlaylistSourceError("managed"),
+        )
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__), patch(
+                "cli.shuffle_playlist", side_effect=failure
+            ):
+                result, stdout, stderr = self.run_cli(["shuffle", "source"])
+                self.assertEqual(result, cli.EXIT_USAGE)
+                self.assertEqual(stdout, "")
+                self.assertIn(str(failure), stderr)
+
+    def test_partial_shuffle_uses_dedicated_exit_and_stderr(self):
+        partial = RoyalShufflePartialWriteError(
+            RoyalShuffleResult(
+                source_name="Source",
+                source_id="source-id",
+                output_name="Source - RANDOM",
+                output_id="output-id",
+                total_items=150,
+                items_written=100,
+                skipped_item_count=0,
+                action="created",
+            ),
+            requests.ConnectionError("offline"),
+        )
+        with patch("cli.shuffle_playlist", side_effect=partial):
+            result, stdout, stderr = self.run_cli(["shuffle", "source-id"])
+
+        self.assertEqual(result, cli.EXIT_PARTIAL)
+        self.assertEqual(stdout, "")
+        self.assertIn("Output playlist ID: output-id", stderr)
+        self.assertIn("Tracks written: 100/150", stderr)
+        self.assertIn("network failure", stderr)
+
+    def test_quota_before_output_uses_existing_retry_exit(self):
+        with patch(
+            "cli.shuffle_playlist",
+            side_effect=SpotifyQuotaExceededError("quota"),
+        ):
+            result, stdout, stderr = self.run_cli(["shuffle", "source-id"])
+        self.assertEqual(result, cli.EXIT_RETRY_LATER)
+        self.assertEqual(stdout, "")
+        self.assertIn("quota", stderr)
+
+    def test_interrupt_after_output_reports_counts_and_returns_130(self):
+        partial = RoyalShufflePartialWriteError(
+            RoyalShuffleResult(
+                "Source", "source-id", "Output", "output-id", 5, 0, 0, "created"
+            ),
+            KeyboardInterrupt(),
+        )
+        with patch("cli.shuffle_playlist", side_effect=partial):
+            result, stdout, stderr = self.run_cli(["shuffle", "source-id"])
+        self.assertEqual(result, 130)
+        self.assertEqual(stdout, "")
+        self.assertIn("Tracks written: 0/5", stderr)
+        self.assertIn("interrupted", stderr)
 
     def test_expected_failures_have_stable_exit_codes(self):
         response = Mock(status_code=500)

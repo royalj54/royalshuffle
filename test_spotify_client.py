@@ -47,6 +47,32 @@ class SpotifyClientTests(unittest.TestCase):
     def setUp(self):
         self.client = SpotifyClient("test-token")
 
+    @patch("spotify_client.requests.post")
+    def test_create_playlist_transports_public_false_as_json_boolean(self, post):
+        post.return_value = response(201, payload={"id": "playlist-id"})
+
+        self.client.create_playlist(
+            name="Source - RANDOM",
+            description=MANAGED_PLAYLIST_DESCRIPTION,
+            public=False,
+        )
+
+        post.assert_called_once()
+        request_kwargs = post.call_args.kwargs
+        self.assertIs(request_kwargs["json"]["public"], False)
+        prepared = requests.Request(
+            "POST",
+            post.call_args.args[0],
+            json=request_kwargs["json"],
+        ).prepare()
+        body = prepared.body.decode() if isinstance(prepared.body, bytes) else prepared.body
+        self.assertIn('"public": false', body)
+        self.assertNotIn('"public": "false"', body)
+        self.assertEqual(
+            request_kwargs["json"]["description"],
+            MANAGED_PLAYLIST_DESCRIPTION,
+        )
+
     @patch("spotify_client.requests.get")
     def test_get_track_uses_supported_individual_endpoint(self, get):
         get.return_value = response(
@@ -416,6 +442,7 @@ class RoyalShuffleWorkflowTests(unittest.TestCase):
         ]
         spotify.find_playlists_by_name.return_value = []
         spotify.create_playlist.return_value = {"id": "output-id"}
+        spotify.add_playlist_items.return_value = 2
         status_messages = []
 
         result = royal_shuffle(
@@ -431,8 +458,8 @@ class RoyalShuffleWorkflowTests(unittest.TestCase):
                 "spotify:episode:copyable",
             ],
         )
-        self.assertEqual(result["item_count"], 2)
-        self.assertEqual(result["skipped_item_count"], 2)
+        self.assertEqual(result.items_written, 2)
+        self.assertEqual(result.skipped_item_count, 2)
         spotify.create_playlist.assert_called_once_with(
             name="Source - RANDOM",
             description=MANAGED_PLAYLIST_DESCRIPTION,

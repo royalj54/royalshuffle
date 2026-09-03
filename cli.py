@@ -23,7 +23,15 @@ from auth import (
     wait_for_spotify_callback,
     log_debug,
 )
-from playlist_service import eligible_source_playlists
+from playlist_service import (
+    AmbiguousPlaylistSourceError,
+    ManagedPlaylistSourceError,
+    PlaylistSourceNotFoundError,
+    eligible_source_playlists,
+    resolve_source_playlist,
+)
+from playlist_registry import load_managed_playlist_ids
+from royalshuffle import RoyalShufflePartialWriteError, royal_shuffle
 from session_service import (
     InvalidSavedSessionError,
     NoSavedSessionError,
@@ -42,6 +50,7 @@ EXIT_API = 4
 EXIT_RETRY_LATER = 5
 EXIT_LOCAL_STATE = 6
 EXIT_NO_ELIGIBLE_PLAYLISTS = 7
+EXIT_PARTIAL = 8
 
 
 def build_parser():
@@ -58,6 +67,14 @@ def build_parser():
     subparsers.add_parser("diagnostics", help="Show redacted runtime diagnostics")
     subparsers.add_parser("auth", help="Authenticate with Spotify")
     subparsers.add_parser("playlists", help="List eligible source playlists")
+    shuffle_parser = subparsers.add_parser(
+        "shuffle",
+        help="Create or update a true-random managed playlist",
+    )
+    shuffle_parser.add_argument(
+        "playlist",
+        help="Playlist ID, URI, URL, or unambiguous exact name",
+    )
     return parser
 
 
@@ -153,6 +170,58 @@ def list_playlists(output):
     return EXIT_SUCCESS
 
 
+def shuffle_playlist(reference, output):
+    spotify = restore_spotify_client()
+    playlists = spotify.get_playlists()
+    managed_playlist_ids = load_managed_playlist_ids()
+    source = resolve_source_playlist(
+        playlists,
+        reference,
+        managed_playlist_ids,
+    )
+    result = royal_shuffle(spotify, source)
+    print("Royal Shuffle complete.", file=output)
+    print(f"Source: {result.source_name} ({result.source_id})", file=output)
+    print(f"Output: {result.output_name}", file=output)
+    print(
+        f"Tracks written: {result.items_written}/{result.total_items}",
+        file=output,
+    )
+    print(f"Output playlist ID: {result.output_id}", file=output)
+    return EXIT_SUCCESS
+
+
+def _report_partial_shuffle(exc):
+    result = exc.result
+    print("royalshuffle: Royal Shuffle did not complete.", file=sys.stderr)
+    print(f"Output playlist ID: {result.output_id}", file=sys.stderr)
+    print(
+        f"Tracks written: {result.items_written}/{result.total_items}",
+        file=sys.stderr,
+    )
+    cause = exc.cause
+    if isinstance(cause, KeyboardInterrupt):
+        print("Failure: interrupted", file=sys.stderr)
+        return 130
+    if isinstance(cause, SpotifyQuotaExceededError):
+        print(f"Failure: developer quota exhausted: {cause}", file=sys.stderr)
+        return EXIT_PARTIAL
+    if isinstance(cause, SpotifyRetryLaterError):
+        print(f"Failure: Spotify retry deferred: {cause}", file=sys.stderr)
+        return EXIT_PARTIAL
+    if isinstance(cause, (requests.ConnectionError, requests.Timeout)):
+        print(f"Failure: network failure: {cause}", file=sys.stderr)
+        return EXIT_PARTIAL
+    if isinstance(cause, requests.HTTPError):
+        print(f"Failure: Spotify API failure: {cause}", file=sys.stderr)
+        return EXIT_PARTIAL
+    if isinstance(cause, (OSError, ValueError)):
+        print(f"Failure: local state failure: {cause}", file=sys.stderr)
+        return EXIT_PARTIAL
+    print(f"Failure: {cause}", file=sys.stderr)
+    return EXIT_PARTIAL
+
+
 def _report_error(message, error):
     print(f"royalshuffle: {message}: {error}", file=sys.stderr)
 
@@ -173,6 +242,16 @@ def main(argv=None):
             if result == EXIT_NO_ELIGIBLE_PLAYLISTS:
                 print("No eligible source playlists found.", file=sys.stderr)
             return result
+        if args.command == "shuffle":
+            return shuffle_playlist(args.playlist, sys.stdout)
+    except RoyalShufflePartialWriteError as exc:
+        return _report_partial_shuffle(exc)
+    except (PlaylistSourceNotFoundError, AmbiguousPlaylistSourceError) as exc:
+        _report_error("playlist selection failed", exc)
+        return EXIT_USAGE
+    except ManagedPlaylistSourceError as exc:
+        _report_error("managed playlist cannot be a source", exc)
+        return EXIT_USAGE
     except (SpotifyQuotaExceededError, SpotifyRetryLaterError) as exc:
         _report_error("Spotify request deferred", exc)
         return EXIT_RETRY_LATER
