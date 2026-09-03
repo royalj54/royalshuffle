@@ -1,14 +1,14 @@
 [Setup]
 AppName=RoyalShuffle
-AppVersion=0.4.0
+AppVersion=0.4.1
 AppPublisher=RoyalShuffle
-VersionInfoVersion=0.4.0.0
+VersionInfoVersion=0.4.1.0
 VersionInfoProductName=RoyalShuffle
 VersionInfoDescription=RoyalShuffle Spotify Playlist Randomizer
 DefaultDirName={autopf}\RoyalShuffle
 DefaultGroupName=RoyalShuffle
 OutputDir=output
-OutputBaseFilename=RoyalShuffle-0.4.0-Setup
+OutputBaseFilename=RoyalShuffle-0.4.1-Setup
 SetupIconFile=..\assets\royalshuffle.ico
 UninstallDisplayIcon={app}\RoyalShuffle.exe
 Compression=lzma
