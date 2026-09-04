@@ -3,6 +3,7 @@ import os
 import platform
 import sys
 import threading
+from pathlib import Path
 
 import requests
 
@@ -11,8 +12,17 @@ from app_paths import (
     config_folder,
     data_folder,
     diagnostics_folder,
+    ensure_exports_folder,
     state_folder,
     token_file,
+)
+from playlist_export import export_playlist_csv, safe_csv_filename
+from playlist_import import PlaylistImportValidationError, parse_playlist_csv
+from playlist_import_workflow import (
+    CatalogValidationError,
+    PlaylistImportPartialWriteError,
+    create_imported_playlist,
+    preflight_playlist_import,
 )
 from auth import (
     create_authentication_session,
@@ -74,6 +84,22 @@ def build_parser():
     shuffle_parser.add_argument(
         "playlist",
         help="Playlist ID, URI, URL, or unambiguous exact name",
+    )
+    export_parser = subparsers.add_parser(
+        "export", help="Export a playlist to CSV without changing its order"
+    )
+    export_parser.add_argument(
+        "playlist", help="Playlist ID, URI, URL, or unambiguous exact name"
+    )
+    export_parser.add_argument(
+        "--output", type=Path, help="Explicit CSV filename (must not already exist)"
+    )
+    import_parser = subparsers.add_parser(
+        "import", help="Create a playlist in exact CSV row order"
+    )
+    import_parser.add_argument("csv", type=Path, help="RoyalShuffle CSV file")
+    import_parser.add_argument(
+        "--name", required=True, help="Name for the newly created Spotify playlist"
     )
     return parser
 
@@ -191,6 +217,63 @@ def shuffle_playlist(reference, output):
     return EXIT_SUCCESS
 
 
+def _resolve_playlist(spotify, reference):
+    return resolve_source_playlist(
+        spotify.get_playlists(),
+        reference,
+        load_managed_playlist_ids(),
+    )
+
+
+def _export_destination(source, explicit_output):
+    if explicit_output is not None:
+        destination = explicit_output.expanduser()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        exports_directory = ensure_exports_folder()
+        if exports_directory is None:
+            raise OSError("Could not create the RoyalShuffle exports directory.")
+        destination = exports_directory / (safe_csv_filename(source["name"]) + ".csv")
+
+    if destination.exists():
+        raise FileExistsError(f"Export destination already exists: {destination}")
+    return destination
+
+
+def export_playlist(reference, explicit_output, output):
+    spotify = restore_spotify_client()
+    source = _resolve_playlist(spotify, reference)
+    destination = _export_destination(source, explicit_output)
+    items = spotify.get_playlist_items(source["id"])
+    row_count = export_playlist_csv(destination, items)
+    print("CSV export complete.", file=output)
+    print(f'Source: {source["name"]}', file=output)
+    print(f"Rows exported: {row_count}", file=output)
+    print(f"CSV path: {destination.resolve()}", file=output)
+    return EXIT_SUCCESS
+
+
+def _format_validation_issues(issues):
+    for issue in issues:
+        location = f"Row {issue.line_number}" if issue.line_number is not None else "CSV"
+        yield f"{location}: {issue.message}"
+
+
+def import_playlist(csv_path, playlist_name, output):
+    playlist_name = playlist_name.strip()
+    if not playlist_name:
+        raise ValueError("Playlist name cannot be empty.")
+    spotify = restore_spotify_client()
+    rows = parse_playlist_csv(csv_path.expanduser())
+    prepared = preflight_playlist_import(spotify, rows)
+    result = create_imported_playlist(spotify, prepared, playlist_name)
+    print("CSV import complete.", file=output)
+    print(f"Output: {result.name}", file=output)
+    print(f"Tracks written: {result.item_count}/{len(rows)}", file=output)
+    print(f"Output playlist ID: {result.playlist_id}", file=output)
+    return EXIT_SUCCESS
+
+
 def _report_partial_shuffle(exc):
     result = exc.result
     print("royalshuffle: Royal Shuffle did not complete.", file=sys.stderr)
@@ -222,6 +305,27 @@ def _report_partial_shuffle(exc):
     return EXIT_PARTIAL
 
 
+def _report_partial_import(exc):
+    print("royalshuffle: CSV import did not complete.", file=sys.stderr)
+    print(f"Output playlist ID: {exc.playlist_id}", file=sys.stderr)
+    print(f"Tracks written: {exc.items_written}/{exc.total_items}", file=sys.stderr)
+    cause = exc.cause
+    if isinstance(cause, KeyboardInterrupt):
+        print("Failure: interrupted", file=sys.stderr)
+        return 130
+    if isinstance(cause, SpotifyQuotaExceededError):
+        print(f"Failure: developer quota exhausted: {cause}", file=sys.stderr)
+    elif isinstance(cause, SpotifyRetryLaterError):
+        print(f"Failure: Spotify retry deferred: {cause}", file=sys.stderr)
+    elif isinstance(cause, (requests.ConnectionError, requests.Timeout)):
+        print(f"Failure: network failure: {cause}", file=sys.stderr)
+    elif isinstance(cause, requests.HTTPError):
+        print(f"Failure: Spotify API failure: {cause}", file=sys.stderr)
+    else:
+        print(f"Failure: {cause}", file=sys.stderr)
+    return EXIT_PARTIAL
+
+
 def _report_error(message, error):
     print(f"royalshuffle: {message}: {error}", file=sys.stderr)
 
@@ -244,8 +348,19 @@ def main(argv=None):
             return result
         if args.command == "shuffle":
             return shuffle_playlist(args.playlist, sys.stdout)
+        if args.command == "export":
+            return export_playlist(args.playlist, args.output, sys.stdout)
+        if args.command == "import":
+            return import_playlist(args.csv, args.name, sys.stdout)
     except RoyalShufflePartialWriteError as exc:
         return _report_partial_shuffle(exc)
+    except PlaylistImportPartialWriteError as exc:
+        return _report_partial_import(exc)
+    except (PlaylistImportValidationError, CatalogValidationError) as exc:
+        print("royalshuffle: CSV import validation failed.", file=sys.stderr)
+        for line in _format_validation_issues(exc.issues):
+            print(line, file=sys.stderr)
+        return EXIT_USAGE
     except (PlaylistSourceNotFoundError, AmbiguousPlaylistSourceError) as exc:
         _report_error("playlist selection failed", exc)
         return EXIT_USAGE

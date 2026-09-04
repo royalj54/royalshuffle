@@ -1,4 +1,5 @@
 import csv
+import re
 
 
 COLUMNS = [
@@ -15,6 +16,17 @@ COLUMNS = [
     "Track Number",
     "Explicit",
 ]
+
+
+def safe_csv_filename(playlist_name):
+    filename = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", playlist_name)
+    filename = filename.strip().rstrip(".") or "playlist"
+    reserved_names = {
+        "CON", "PRN", "AUX", "NUL",
+        *(f"COM{number}" for number in range(1, 10)),
+        *(f"LPT{number}" for number in range(1, 10)),
+    }
+    return "_" + filename if filename.upper() in reserved_names else filename
 
 
 def format_duration(duration_ms):

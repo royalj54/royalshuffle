@@ -1,6 +1,5 @@
 import ctypes
 import os
-import re
 import sys
 import tkinter as tk
 import threading
@@ -23,7 +22,7 @@ from spotify_client import (
     SpotifyRetryLaterError,
 )
 from app_metadata import APP_VERSION, MANAGED_PLAYLIST_DESCRIPTION
-from playlist_export import export_playlist_csv
+from playlist_export import export_playlist_csv, safe_csv_filename
 from playlist_service import eligible_source_playlists
 from playlist_import import (
     PlaylistImportValidationError,
@@ -159,22 +158,6 @@ def application_version_text():
         return f"v{product_version}"
     except (OSError, TypeError, ValueError):
         return "Version unavailable"
-
-
-def safe_csv_filename(playlist_name):
-    filename = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", playlist_name)
-    filename = filename.strip().rstrip(".")
-    filename = filename or "playlist"
-
-    reserved_names = {
-        "CON", "PRN", "AUX", "NUL",
-        *(f"COM{number}" for number in range(1, 10)),
-        *(f"LPT{number}" for number in range(1, 10)),
-    }
-    if filename.upper() in reserved_names:
-        filename = "_" + filename
-
-    return filename
 
 
 def choose_csv_destination(parent, playlist_name):

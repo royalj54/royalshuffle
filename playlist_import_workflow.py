@@ -111,7 +111,7 @@ def create_imported_playlist(spotify, prepared_import, playlist_name):
 
     try:
         spotify.add_playlist_items(playlist_id, uris)
-    except Exception as exc:
+    except (Exception, KeyboardInterrupt) as exc:
         raise PlaylistImportPartialWriteError(
             playlist_id=playlist_id,
             playlist_name=playlist_name,
