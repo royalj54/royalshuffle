@@ -3,6 +3,69 @@ Transparent, user-controlled true random shuffle for Spotify playlists.
 
 ## Linux/WSL CLI
 
+RoyalShuffle supports Python 3.10 and 3.12. The CLI does not require Tkinter;
+Tkinter is needed only to run the optional desktop GUI from source.
+
+### Install from source
+
+Prerequisites are Git, Python 3.10 or 3.12, the Python `venv` module, and pip.
+On distributions that split these from Python, install the corresponding venv
+package first (for example, `python3-venv`). Then:
+
+```bash
+git clone https://github.com/royalj54/royalshuffle.git
+cd royalshuffle
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install .
+royalshuffle --version
+royalshuffle diagnostics
+```
+
+For development, activate a virtual environment and use an editable install:
+
+```bash
+python -m pip install -e .
+```
+
+The source tree can also be used without installation with
+`python3 -m cli --help`, but an installed virtual environment is recommended.
+
+To upgrade a source installation, fetch or download the newer source, activate
+the same virtual environment, and reinstall it:
+
+```bash
+git pull --ff-only
+python -m pip install --upgrade .
+```
+
+To uninstall the program:
+
+```bash
+python -m pip uninstall royalshuffle
+```
+
+Uninstalling the package does not delete saved authentication, configuration,
+state, diagnostics, or exported CSV files.
+
+### Developer tests
+
+The headless core/CLI suite does not require Tkinter:
+
+```bash
+python -m unittest test_app_paths test_auth_logging test_cli test_cli_phase3 test_playlist_import test_playlist_import_workflow test_playlist_service test_royalshuffle_workflow test_session_service test_spotify_client
+```
+
+Run the complete suite, including GUI tests, with:
+
+```bash
+python -m unittest discover -v
+```
+
+On a minimal Linux installation without Tkinter, the five GUI-dependent test
+modules are reported as skipped. Other import failures remain test failures.
+
 The Linux/WSL CLI supports:
 
 ```text
@@ -44,9 +107,13 @@ playlists, not managed RoyalShuffle outputs. If population fails after creation,
 the partial playlist is preserved and the command reports its ID and confirmed
 track count. Incomplete writes return exit code 8, while Ctrl+C returns 130.
 
-Building or installing from source requires Python 3.10 or newer and a modern
-build environment with setuptools 61 or newer. Standard build isolation will
-install the declared build requirement automatically.
+Building distributions requires the `build` package. Build isolation installs
+the declared setuptools requirement automatically:
+
+```bash
+python -m pip install build
+python -m build
+```
 
 Exit codes:
 

@@ -5,6 +5,13 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 try:
+    import tkinter  # noqa: F401
+except ModuleNotFoundError as exc:
+    if exc.name == "tkinter":
+        raise unittest.SkipTest("Tkinter unavailable; skipping GUI tests") from exc
+    raise
+
+try:
     import requests
 except ModuleNotFoundError:
     requests = types.ModuleType("requests")

@@ -1,6 +1,13 @@
 import unittest
 from unittest.mock import Mock, patch
 
+try:
+    import tkinter  # noqa: F401
+except ModuleNotFoundError as exc:
+    if exc.name == "tkinter":
+        raise unittest.SkipTest("Tkinter unavailable; skipping GUI tests") from exc
+    raise
+
 import ui
 from app_metadata import APP_VERSION, MANAGED_PLAYLIST_DESCRIPTION
 

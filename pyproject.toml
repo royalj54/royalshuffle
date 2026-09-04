@@ -1,13 +1,30 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "royalshuffle"
 dynamic = ["version"]
 description = "Transparent, user-controlled true random shuffle for Spotify playlists"
+readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = ["requests==2.34.2"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio",
+]
+
+[project.urls]
+Homepage = "https://github.com/royalj54/royalshuffle"
+Repository = "https://github.com/royalj54/royalshuffle"
+Issues = "https://github.com/royalj54/royalshuffle/issues"
 
 [project.scripts]
 royalshuffle = "cli:main"
