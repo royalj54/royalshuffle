@@ -13,12 +13,12 @@ from app_metadata import APP_VERSION, MANAGED_PLAYLIST_DESCRIPTION
 
 
 class AppMetadataTests(unittest.TestCase):
-    def test_application_version_is_current_windows_release(self):
-        self.assertEqual(APP_VERSION, "0.4.1")
+    def test_application_version_is_current_python_release(self):
+        self.assertEqual(APP_VERSION, "0.5.0rc1")
 
     def test_source_runtime_uses_platform_neutral_version(self):
         with patch.object(ui.sys, "frozen", False, create=True):
-            self.assertEqual(ui.application_version_text(), "v0.4.1")
+            self.assertEqual(ui.application_version_text(), "v0.5.0rc1")
 
     @patch("ui.add_reviewed_legacy_playlist_id")
     @patch("ui.add_managed_playlist_id")

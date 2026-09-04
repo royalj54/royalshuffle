@@ -3,6 +3,12 @@ Transparent, user-controlled true random shuffle for Spotify playlists.
 
 ## Linux/WSL CLI
 
+RoyalShuffle 0.5.0rc1 is the first Linux CLI release candidate. Native Linux
+acceptance is still pending. This prerelease has been validated under Ubuntu
+WSL2 and automated Ubuntu CI and is intended for native-Linux acceptance
+testing. It is distributed through GitHub as source, a wheel, and an sdist; it
+is not published on PyPI and is not a standalone executable or distro package.
+
 RoyalShuffle supports Python 3.10 and 3.12. The CLI does not require Tkinter;
 Tkinter is needed only to run the optional desktop GUI from source.
 
