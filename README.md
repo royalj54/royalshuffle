@@ -1,5 +1,27 @@
-# royalshuffle
+# RoyalShuffle
+
 Transparent, user-controlled true random shuffle for Spotify playlists.
+
+This repository contains the shared Python/Core implementation, the stable
+Windows desktop GUI, the Linux command-line application, packaging, tests, and
+project documentation. Windows and Linux have independent release versions:
+
+| Platform | Current release | Status |
+| --- | --- | --- |
+| Windows GUI | [0.4.2](https://github.com/royalj54/royalshuffle/releases/tag/windows%2Fv0.4.2) | Stable installer release |
+| Linux CLI/Core | [0.5.0rc2](https://github.com/royalj54/royalshuffle/releases/tag/v0.5.0-rc.2) | Release candidate; native Linux acceptance pending |
+| Android | 0.2.0 development line | Maintained separately and not included in this Python source tree |
+
+The shared source on `main` can move ahead of either released platform. Use an
+immutable release tag when reproducing or packaging a published release.
+
+## Windows desktop GUI
+
+Windows users should install the signed-off 0.4.2 release from
+[RoyalShuffle for Windows 0.4.2](https://github.com/royalj54/royalshuffle/releases/tag/windows%2Fv0.4.2).
+The release provides the installer and its SHA-256 checksum. Windows 0.4.2 uses
+the shared Python/Core code with a Tkinter desktop interface; its installer and
+executable version metadata remain on the independent Windows version track.
 
 ## Linux/WSL CLI
 
@@ -37,9 +59,8 @@ complete external test procedure.
 
 ### Install from source
 
-Source installation is intended for development. Clone the repository and
-check out the immutable release tag before installing so the obsolete default
-branch is not installed accidentally:
+For a reproducible Linux release installation, clone the repository and check
+out its immutable release tag:
 
 ```bash
 git clone https://github.com/royalj54/royalshuffle.git
@@ -54,15 +75,15 @@ python -m pip install .
 For development, activate a virtual environment and use an editable install:
 
 ```bash
+git switch main
 python -m pip install -e .
 ```
 
 The source tree can also be used without installation with
 `python3 -m cli --help`, but an installed virtual environment is recommended.
 
-To upgrade a source installation, fetch or download the newer tagged source,
-activate the same virtual environment, and reinstall it. Do not upgrade from
-the moving default branch:
+To upgrade a release installation, fetch or download the newer tagged source,
+activate the same virtual environment, and reinstall it:
 
 ```bash
 git fetch --tags

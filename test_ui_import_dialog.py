@@ -43,12 +43,26 @@ ROW = PlaylistImportRow(
 )
 
 
+class ImmediateThread:
+    def __init__(self, target, daemon):
+        self.target = target
+        self.daemon = daemon
+
+    def start(self):
+        self.target()
+
+
 class CsvImportUiTests(unittest.TestCase):
     def setUp(self):
         self.parent = Mock()
         self.spotify = Mock()
         self.status = Mock()
         self.button = Mock()
+        self.parent.winfo_exists.return_value = True
+        self.parent.after.side_effect = lambda _delay, callback: callback()
+        thread_patch = patch("ui.threading.Thread", ImmediateThread)
+        thread_patch.start()
+        self.addCleanup(thread_patch.stop)
 
     @patch("ui.tk.Button")
     def test_import_button_starts_disabled(self, button_type):
@@ -75,7 +89,7 @@ class CsvImportUiTests(unittest.TestCase):
 
     @patch("ui.create_imported_playlist")
     @patch("ui.simpledialog.askstring", return_value=None)
-    @patch("ui.preflight_playlist_import", return_value=Mock())
+    @patch("ui.prepare_playlist_import", return_value=Mock())
     @patch("ui.parse_playlist_csv", return_value=(ROW,))
     @patch("ui.choose_csv_source", return_value="playlist.csv")
     def test_validation_summary_then_name_cancellation_creates_nothing(
@@ -91,7 +105,7 @@ class CsvImportUiTests(unittest.TestCase):
         )
 
         self.assertIn(
-            unittest.mock.call(text="1 tracks found, 1 valid"),
+            unittest.mock.call(text="Validating 1 rows..."),
             self.status.config.call_args_list,
         )
         create_imported_playlist.assert_not_called()
@@ -99,7 +113,7 @@ class CsvImportUiTests(unittest.TestCase):
 
     @patch("ui.create_imported_playlist")
     @patch("ui.simpledialog.askstring", return_value="   ")
-    @patch("ui.preflight_playlist_import", return_value=Mock())
+    @patch("ui.prepare_playlist_import", return_value=Mock())
     @patch("ui.parse_playlist_csv", return_value=(ROW,))
     @patch("ui.choose_csv_source", return_value="playlist.csv")
     def test_blank_playlist_name_creates_nothing(
@@ -133,10 +147,10 @@ class CsvImportUiTests(unittest.TestCase):
         self.spotify.create_playlist.assert_not_called()
 
     @patch("ui.log_debug")
-    @patch("ui.preflight_playlist_import", side_effect=RuntimeError("secret"))
+    @patch("ui.prepare_playlist_import", side_effect=RuntimeError("secret"))
     @patch("ui.parse_playlist_csv", return_value=(ROW,))
     @patch("ui.choose_csv_source", return_value="playlist.csv")
-    def test_catalog_operational_error_is_sanitized(
+    def test_local_preparation_error_is_sanitized(
         self, _choose, _parse, _preflight, log_debug
     ):
         ui.import_csv_playlist(
@@ -150,7 +164,7 @@ class CsvImportUiTests(unittest.TestCase):
 
     @patch("ui.create_imported_playlist")
     @patch("ui.simpledialog.askstring", return_value="Imported")
-    @patch("ui.preflight_playlist_import", return_value=Mock())
+    @patch("ui.prepare_playlist_import", return_value=Mock())
     @patch("ui.parse_playlist_csv", return_value=(ROW,))
     @patch("ui.choose_csv_source", return_value="playlist.csv")
     def test_success_message(
@@ -164,12 +178,79 @@ class CsvImportUiTests(unittest.TestCase):
             self.parent, self.spotify, self.status, self.button
         )
 
-        self.status.config.assert_any_call(text="Created: Imported • 1 tracks")
+        self.status.config.assert_any_call(text="Import complete: Imported • 1 tracks")
+
+    @patch("ui.create_imported_playlist")
+    @patch("ui.simpledialog.askstring", return_value="Imported")
+    @patch("ui.prepare_playlist_import", return_value=Mock())
+    @patch("ui.parse_playlist_csv", return_value=(ROW,))
+    @patch("ui.choose_csv_source", return_value="playlist.csv")
+    def test_network_work_uses_worker_and_progress_is_marshaled(
+        self,
+        _choose,
+        _parse,
+        _prepare,
+        _askstring,
+        create_imported_playlist,
+    ):
+        def create(_spotify, _prepared, _name, progress_callback):
+            progress_callback("Creating playlist...")
+            progress_callback("Adding tracks 1-1 of 1...")
+            self.assertNotIn(
+                unittest.mock.call(text="Adding tracks 1-1 of 1..."),
+                self.status.config.call_args_list,
+            )
+            return PlaylistImportResult("playlist-id", "Imported", 1)
+
+        create_imported_playlist.side_effect = create
+
+        worker = ui.import_csv_playlist(
+            self.parent, self.spotify, self.status, self.button
+        )
+
+        self.assertIsInstance(worker, ImmediateThread)
+        self.status.config.assert_any_call(text="Creating playlist...")
+        self.status.config.assert_any_call(text="Adding tracks 1-1 of 1...")
+        self.assertEqual(
+            self.button.config.call_args_list[0],
+            unittest.mock.call(state="disabled"),
+        )
+        self.assertEqual(
+            self.button.config.call_args_list[-1],
+            unittest.mock.call(state="normal"),
+        )
+
+    @patch("ui.create_imported_playlist")
+    @patch("ui.simpledialog.askstring", return_value="Imported")
+    @patch("ui.prepare_playlist_import", return_value=Mock())
+    @patch("ui.parse_playlist_csv", return_value=(ROW,))
+    @patch("ui.choose_csv_source", return_value="playlist.csv")
+    def test_destroyed_window_ignores_completed_worker_result(
+        self,
+        _choose,
+        _parse,
+        _prepare,
+        _askstring,
+        create_imported_playlist,
+    ):
+        create_imported_playlist.return_value = PlaylistImportResult(
+            "playlist-id", "Imported", 1
+        )
+        self.parent.winfo_exists.return_value = False
+
+        ui.import_csv_playlist(
+            self.parent, self.spotify, self.status, self.button
+        )
+
+        self.assertNotIn(
+            unittest.mock.call(text="Import complete: Imported • 1 tracks"),
+            self.status.config.call_args_list,
+        )
 
     @patch("ui.messagebox.showerror")
     @patch("ui.create_imported_playlist")
     @patch("ui.simpledialog.askstring", return_value="Partial")
-    @patch("ui.preflight_playlist_import", return_value=Mock())
+    @patch("ui.prepare_playlist_import", return_value=Mock())
     @patch("ui.parse_playlist_csv", return_value=(ROW,))
     @patch("ui.choose_csv_source", return_value="playlist.csv")
     def test_partial_write_message_reports_counts_without_rollback(
@@ -190,16 +271,20 @@ class CsvImportUiTests(unittest.TestCase):
         )
 
         self.status.config.assert_any_call(
-            text="Partially created: Partial • 100/150 tracks added"
+            text=(
+                "Partially created: Partial • 100/150 tracks added • "
+                "Playlist ID: playlist-id"
+            )
         )
         self.assertIn("100 of 150", showerror.call_args.args[1])
+        self.assertIn("Playlist ID: playlist-id", showerror.call_args.args[1])
         self.assertNotIn("secret", showerror.call_args.args[1])
         self.spotify.clear_playlist.assert_not_called()
 
     @patch("ui.messagebox.showerror")
     @patch("ui.create_imported_playlist")
     @patch("ui.simpledialog.askstring", return_value="Partial")
-    @patch("ui.preflight_playlist_import", return_value=Mock())
+    @patch("ui.prepare_playlist_import", return_value=Mock())
     @patch("ui.parse_playlist_csv", return_value=(ROW,))
     @patch("ui.choose_csv_source", return_value="playlist.csv")
     def test_partial_write_quota_message_preserves_partial_details(
@@ -230,16 +315,20 @@ class CsvImportUiTests(unittest.TestCase):
         self.assertIn(SPOTIFY_DEVELOPER_QUOTA_MESSAGE, message)
         self.spotify.clear_playlist.assert_not_called()
 
-    @patch("ui.preflight_playlist_import")
+    @patch("ui.create_imported_playlist")
+    @patch("ui.simpledialog.askstring", return_value="Imported")
+    @patch("ui.prepare_playlist_import", return_value=Mock())
     @patch("ui.parse_playlist_csv", return_value=(ROW,))
     @patch("ui.choose_csv_source", return_value="playlist.csv")
-    def test_preflight_quota_message_is_explicit(
+    def test_creation_quota_message_is_explicit(
         self,
         _choose,
         _parse,
-        preflight,
+        _prepare,
+        _askstring,
+        create_imported_playlist,
     ):
-        preflight.side_effect = SpotifyQuotaExceededError(
+        create_imported_playlist.side_effect = SpotifyQuotaExceededError(
             SPOTIFY_DEVELOPER_QUOTA_MESSAGE
         )
 

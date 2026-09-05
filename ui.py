@@ -1,5 +1,6 @@
 import ctypes
 import os
+import queue
 import sys
 import tkinter as tk
 import threading
@@ -29,10 +30,9 @@ from playlist_import import (
     parse_playlist_csv,
 )
 from playlist_import_workflow import (
-    CatalogValidationError,
     PlaylistImportPartialWriteError,
     create_imported_playlist,
-    preflight_playlist_import,
+    prepare_playlist_import,
 )
 from royalshuffle import RoyalShufflePartialWriteError, royal_shuffle
 from session_service import refresh_saved_token_data
@@ -208,16 +208,17 @@ def import_csv_playlist(parent, spotify, status_label, import_button):
         return None
 
     import_button.config(state="disabled")
-    status_label.config(text="Validating CSV import...")
+    status_label.config(text="Reading CSV...")
     parent.update_idletasks()
 
     try:
+        log_debug("CSV import started; interface=windows_ui")
         rows = parse_playlist_csv(source)
-        prepared_import = preflight_playlist_import(spotify, rows)
         status_label.config(
-            text=f"{len(rows)} tracks found, {len(rows)} valid"
+            text=f"Validating {len(rows)} rows..."
         )
         parent.update_idletasks()
+        prepared_import = prepare_playlist_import(rows)
 
         playlist_name = simpledialog.askstring(
             "Import CSV",
@@ -225,25 +226,16 @@ def import_csv_playlist(parent, spotify, status_label, import_button):
             parent=parent,
         )
         if playlist_name is None:
+            import_button.config(state="normal")
             return None
 
         playlist_name = playlist_name.strip()
         if not playlist_name:
             status_label.config(text="Playlist name cannot be empty")
+            import_button.config(state="normal")
             return None
 
-        status_label.config(text=f"Creating: {playlist_name}...")
-        parent.update_idletasks()
-        result = create_imported_playlist(
-            spotify,
-            prepared_import,
-            playlist_name,
-        )
-        status_label.config(
-            text=f"Created: {result.name} • {result.item_count} tracks"
-        )
-        return result
-    except (PlaylistImportValidationError, CatalogValidationError) as exc:
+    except PlaylistImportValidationError as exc:
         messagebox.showerror(
             "CSV Import Validation",
             _format_import_issues(exc.issues),
@@ -252,53 +244,130 @@ def import_csv_playlist(parent, spotify, status_label, import_button):
         status_label.config(
             text=f"CSV import found {len(exc.issues)} invalid row(s)"
         )
-        return None
-    except PlaylistImportPartialWriteError as exc:
-        partial_status = (
-            f"Partially created: {exc.playlist_name} • "
-            f"{exc.items_written}/{exc.total_items} tracks added"
-        )
-        quota_exceeded = isinstance(
-            exc.cause,
-            SpotifyQuotaExceededError,
-        )
-        status_label.config(
-            text=(
-                f"{SPOTIFY_DEVELOPER_QUOTA_MESSAGE} {partial_status}"
-                if quota_exceeded
-                else partial_status
-            )
-        )
-        quota_detail = (
-            f"\n\n{SPOTIFY_DEVELOPER_QUOTA_MESSAGE}"
-            if quota_exceeded
-            else ""
-        )
-        messagebox.showerror(
-            "CSV Import Incomplete",
-            (
-                f'Playlist "{exc.playlist_name}" was partially created.\n\n'
-                f"{exc.items_written} of {exc.total_items} tracks were added. "
-                "The remaining tracks were not added. The partial private "
-                f"playlist was left in Spotify.{quota_detail}"
-            ),
-            parent=parent,
-        )
-        return None
-    except SpotifyRetryLaterError as exc:
-        status_label.config(text=str(exc))
+        import_button.config(state="normal")
         return None
     except Exception as exc:
         log_debug(
-            "CSV import operational failure; "
+            "CSV import failed; stage=local_validation; "
             f"exception_type={type(exc).__name__}"
         )
         status_label.config(
             text="CSV import failed. No playlist was created."
         )
-        return None
-    finally:
         import_button.config(state="normal")
+        return None
+
+    events = queue.Queue()
+
+    def report_progress(message):
+        events.put(("progress", message))
+
+    def run_import():
+        try:
+            result = create_imported_playlist(
+                spotify,
+                prepared_import,
+                playlist_name,
+                progress_callback=report_progress,
+            )
+            events.put(("success", result))
+        except (Exception, KeyboardInterrupt) as exc:
+            events.put(("failure", exc))
+
+    def window_exists():
+        try:
+            return bool(parent.winfo_exists())
+        except (tk.TclError, RuntimeError):
+            return False
+
+    def show_failure(exc):
+        if isinstance(exc, PlaylistImportPartialWriteError):
+            partial_status = (
+                f"Partially created: {exc.playlist_name} • "
+                f"{exc.items_written}/{exc.total_items} tracks added • "
+                f"Playlist ID: {exc.playlist_id}"
+            )
+            quota_exceeded = isinstance(
+                exc.cause,
+                SpotifyQuotaExceededError,
+            )
+            status_label.config(
+                text=(
+                    f"{SPOTIFY_DEVELOPER_QUOTA_MESSAGE} {partial_status}"
+                    if quota_exceeded
+                    else partial_status
+                )
+            )
+            quota_detail = (
+                f"\n\n{SPOTIFY_DEVELOPER_QUOTA_MESSAGE}"
+                if quota_exceeded
+                else ""
+            )
+            messagebox.showerror(
+                "CSV Import Incomplete",
+                (
+                    f'Playlist "{exc.playlist_name}" was partially created.\n\n'
+                    f"Playlist ID: {exc.playlist_id}\n"
+                    f"{exc.items_written} of {exc.total_items} tracks were "
+                    "confirmed added. The remaining tracks were not added. "
+                    "The partial private playlist was left in Spotify."
+                    f"{quota_detail}"
+                ),
+                parent=parent,
+            )
+        elif isinstance(exc, SpotifyRetryLaterError):
+            status_label.config(text=str(exc))
+        else:
+            log_debug(
+                "CSV import operational failure; stage=network_worker; "
+                f"exception_type={type(exc).__name__}"
+            )
+            status_label.config(
+                text="CSV import failed. No playlist was created."
+            )
+
+    completed = False
+
+    def poll_events():
+        nonlocal completed
+        if not window_exists():
+            return
+
+        while True:
+            try:
+                event_type, value = events.get_nowait()
+            except queue.Empty:
+                break
+
+            if event_type == "progress":
+                status_label.config(text=value)
+            elif event_type == "success":
+                completed = True
+                status_label.config(
+                    text=(
+                        f"Import complete: {value.name} • "
+                        f"{value.item_count} tracks"
+                    )
+                )
+                import_button.config(state="normal")
+            elif event_type == "failure":
+                completed = True
+                show_failure(value)
+                import_button.config(state="normal")
+
+        if not completed:
+            try:
+                parent.after(50, poll_events)
+            except (tk.TclError, RuntimeError):
+                return
+
+    worker = threading.Thread(target=run_import, daemon=True)
+    worker.start()
+    try:
+        parent.after(0, poll_events)
+    except (tk.TclError, RuntimeError):
+        pass
+    return worker
 
 
 def open_royalshuffle_folder(parent):
