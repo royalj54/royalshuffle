@@ -10,23 +10,45 @@ testing. It is distributed through GitHub as source, a wheel, and an sdist; it
 is not published on PyPI and is not a standalone executable or distro package.
 
 RoyalShuffle supports Python 3.10 and 3.12. The CLI does not require Tkinter;
-Tkinter is needed only to run the optional desktop GUI from source.
+Tkinter is needed only to run the optional desktop GUI from source. Spotify
+authentication requires the Spotify account to be allowlisted as a user of the
+RoyalShuffle Spotify Developer app while the app remains in development mode.
+
+### Install the Linux release candidate
+
+For native-Linux acceptance, install the attached wheel in a fresh virtual
+environment. Do not use the source archive or clone the default branch.
+Prerequisites are Python 3.10 or 3.12, the Python `venv` module, and pip. On
+distributions that split these from Python, install the corresponding venv
+package first (for example, `python3-venv`). Then:
+
+```bash
+python3 -m venv ~/royalshuffle-0.5.0rc2-test
+source ~/royalshuffle-0.5.0rc2-test/bin/activate
+python -m pip install --upgrade pip
+python -m pip install "https://github.com/royalj54/royalshuffle/releases/download/v0.5.0-rc.2/royalshuffle-0.5.0rc2-py3-none-any.whl"
+royalshuffle --version
+royalshuffle diagnostics
+```
+
+The version command must report `RoyalShuffle 0.5.0rc2`. Follow the
+[native Linux acceptance checklist](docs/native-linux-acceptance.md) for the
+complete external test procedure.
 
 ### Install from source
 
-Prerequisites are Git, Python 3.10 or 3.12, the Python `venv` module, and pip.
-On distributions that split these from Python, install the corresponding venv
-package first (for example, `python3-venv`). Then:
+Source installation is intended for development. Clone the repository and
+check out the immutable release tag before installing so the obsolete default
+branch is not installed accidentally:
 
 ```bash
 git clone https://github.com/royalj54/royalshuffle.git
 cd royalshuffle
+git checkout v0.5.0-rc.2
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install .
-royalshuffle --version
-royalshuffle diagnostics
 ```
 
 For development, activate a virtual environment and use an editable install:
@@ -38,11 +60,13 @@ python -m pip install -e .
 The source tree can also be used without installation with
 `python3 -m cli --help`, but an installed virtual environment is recommended.
 
-To upgrade a source installation, fetch or download the newer source, activate
-the same virtual environment, and reinstall it:
+To upgrade a source installation, fetch or download the newer tagged source,
+activate the same virtual environment, and reinstall it. Do not upgrade from
+the moving default branch:
 
 ```bash
-git pull --ff-only
+git fetch --tags
+git checkout <new-release-tag>
 python -m pip install --upgrade .
 ```
 
@@ -86,7 +110,30 @@ royalshuffle import <csv> --name "Playlist Name"
 ```
 
 Authentication prints the Spotify authorization URL and supports either the
-localhost callback or pasting the complete callback URL.
+localhost callback or pasting the complete callback URL. Run
+`royalshuffle auth`, authorize RoyalShuffle in the browser, then either press
+Enter to wait for `http://127.0.0.1:8888/callback` or paste the complete
+callback URL shown by the browser.
+
+On Linux, RoyalShuffle uses these locations unless the corresponding XDG
+environment variable is set:
+
+| Data | Default location |
+| --- | --- |
+| Authentication token | `~/.config/royalshuffle/token.json` |
+| Managed playlist state | `~/.local/state/royalshuffle/managed_playlists.json` |
+| Other application state | `~/.local/state/royalshuffle/` |
+| Diagnostics log | `~/.local/state/royalshuffle/Diagnostics/royalshuffle_debug.log` |
+| CSV exports | `~/.local/share/royalshuffle/Exports/` |
+
+`royalshuffle diagnostics` prints the resolved paths and contains no access
+token. When reporting a failure, include the Linux distribution, Python and
+RoyalShuffle versions, the exact command and exit code, redacted diagnostics,
+and whether authentication used the automatic browser callback or pasted-URL
+fallback. Also report any partial Spotify playlist ID printed after a failed
+write. Review the diagnostics log before sharing it, then report the result by
+the channel requested by the release coordinator or in the
+[GitHub issue tracker](https://github.com/royalj54/royalshuffle/issues).
 
 `shuffle` accepts a Spotify playlist ID, URI, URL, or an unambiguous exact
 playlist name. It creates or updates the managed `- RANDOM` output using
