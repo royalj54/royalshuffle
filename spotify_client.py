@@ -339,7 +339,7 @@ class SpotifyClient:
             },
         )
 
-    def add_playlist_items(self, playlist_id, uris):
+    def add_playlist_items(self, playlist_id, uris, progress_callback=None):
         total_batches = (len(uris) + 99) // 100
         items_written = 0
 
@@ -348,6 +348,15 @@ class SpotifyClient:
             start=1,
         ):
             batch = uris[start:start + 100]
+
+            if progress_callback:
+                progress_callback(
+                    batch_number,
+                    total_batches,
+                    start + 1,
+                    start + len(batch),
+                    len(uris),
+                )
 
             log_debug(
                 "Writing Spotify playlist item batch; "
@@ -389,6 +398,12 @@ class SpotifyClient:
                 raise
 
             items_written += len(batch)
+            log_debug(
+                "Confirmed Spotify playlist item batch; "
+                f"batch={batch_number}/{total_batches}; "
+                f"batch_size={len(batch)}; "
+                f"items_written={items_written}"
+            )
 
         log_debug(
             "Completed Spotify playlist population; "

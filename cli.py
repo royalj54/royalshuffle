@@ -19,10 +19,9 @@ from app_paths import (
 from playlist_export import export_playlist_csv, safe_csv_filename
 from playlist_import import PlaylistImportValidationError, parse_playlist_csv
 from playlist_import_workflow import (
-    CatalogValidationError,
     PlaylistImportPartialWriteError,
     create_imported_playlist,
-    preflight_playlist_import,
+    prepare_playlist_import,
 )
 from auth import (
     create_authentication_session,
@@ -264,9 +263,15 @@ def import_playlist(csv_path, playlist_name, output):
     if not playlist_name:
         raise ValueError("Playlist name cannot be empty.")
     spotify = restore_spotify_client()
+    log_debug("CSV import started; interface=cli")
     rows = parse_playlist_csv(csv_path.expanduser())
-    prepared = preflight_playlist_import(spotify, rows)
-    result = create_imported_playlist(spotify, prepared, playlist_name)
+    prepared = prepare_playlist_import(rows)
+    result = create_imported_playlist(
+        spotify,
+        prepared,
+        playlist_name,
+        progress_callback=lambda message: print(message, file=output),
+    )
     print("CSV import complete.", file=output)
     print(f"Output: {result.name}", file=output)
     print(f"Tracks written: {result.item_count}/{len(rows)}", file=output)
@@ -356,7 +361,7 @@ def main(argv=None):
         return _report_partial_shuffle(exc)
     except PlaylistImportPartialWriteError as exc:
         return _report_partial_import(exc)
-    except (PlaylistImportValidationError, CatalogValidationError) as exc:
+    except PlaylistImportValidationError as exc:
         print("royalshuffle: CSV import validation failed.", file=sys.stderr)
         for line in _format_validation_issues(exc.issues):
             print(line, file=sys.stderr)
