@@ -27,6 +27,12 @@ class PlaylistImportParserTests(unittest.TestCase):
             parse_playlist_csv(self.write_csv(text))
         return caught.exception.issues
 
+    def test_accepts_single_track(self):
+        rows = parse_playlist_csv(self.write_csv(
+            f"Spotify URI\n{TRACK_A}\n"
+        ))
+        self.assertEqual([item.uri for item in rows], [TRACK_A])
+
     def test_accepts_export_headers_utf8_bom_order_and_duplicates(self):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
@@ -102,6 +108,25 @@ class PlaylistImportParserTests(unittest.TestCase):
     def test_malformed_csv_fails(self):
         issues = self.issues_for('Spotify URI\n"unterminated\n')
         self.assertEqual(issues[0].code, "malformed_csv")
+
+    def test_rejects_malformed_track_id_length_and_characters(self):
+        issues = self.issues_for(
+            "Spotify URI\n"
+            "spotify:track:short\n"
+            f"spotify:track:{'1' * 21}-\n"
+        )
+        self.assertEqual(
+            [issue.code for issue in issues],
+            ["malformed_uri", "malformed_uri"],
+        )
+
+    def test_accepts_500_rows_in_exact_order(self):
+        uris = [f"spotify:track:{index:022d}" for index in range(500)]
+        rows = parse_playlist_csv(self.write_csv(
+            "Spotify URI,Ignored\n"
+            + "".join(f"{uri},value\n" for uri in uris)
+        ))
+        self.assertEqual([row.uri for row in rows], uris)
 
 
 if __name__ == "__main__":

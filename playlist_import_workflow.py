@@ -1,20 +1,6 @@
 from dataclasses import dataclass
 
-from spotify_client import SpotifyTrackNotFoundError
-
-
-@dataclass(frozen=True)
-class CatalogValidationIssue:
-    line_number: int
-    track_id: str
-    code: str
-    message: str
-
-
-class CatalogValidationError(ValueError):
-    def __init__(self, issues):
-        self.issues = tuple(issues)
-        super().__init__("Spotify catalog validation failed")
+from auth import log_debug
 
 
 @dataclass(frozen=True)
@@ -50,75 +36,78 @@ def _unique_track_ids(rows):
     return tuple(dict.fromkeys(row.track_id for row in rows))
 
 
-def _catalog_problem(track):
-    if track.get("is_playable") is False:
-        return "unavailable_track", "Track is unavailable for this account."
-
-    restrictions = track.get("restrictions")
-    if isinstance(restrictions, dict) and restrictions:
-        return "restricted_track", "Track is restricted for this account."
-
-    if track.get("type", "track") != "track":
-        return "non_track_response", "Spotify did not return a track."
-
-    return None
-
-
-def preflight_playlist_import(spotify, rows):
+def prepare_playlist_import(rows):
     rows = tuple(rows)
-    problems = {}
-    for track_id in _unique_track_ids(rows):
-        try:
-            track = spotify.get_track(track_id)
-        except SpotifyTrackNotFoundError:
-            problems[track_id] = (
-                "removed_track",
-                "Track is unknown or has been removed from Spotify.",
-            )
-            continue
-
-        problem = _catalog_problem(track)
-        if problem:
-            problems[track_id] = problem
-
-    issues = []
-    for row in rows:
-        problem = problems.get(row.track_id)
-        if problem:
-            code, message = problem
-            issues.append(CatalogValidationIssue(
-                line_number=row.line_number,
-                track_id=row.track_id,
-                code=code,
-                message=message,
-            ))
-
-    if issues:
-        raise CatalogValidationError(issues)
-
+    log_debug(f"CSV import rows parsed={len(rows)}")
+    log_debug(f"CSV import valid track URIs={len(rows)}")
+    log_debug(
+        f"CSV import unique track IDs={len(_unique_track_ids(rows))}"
+    )
+    log_debug("CSV import local validation complete")
     return PreparedPlaylistImport(rows=rows)
 
 
-def create_imported_playlist(spotify, prepared_import, playlist_name):
+def create_imported_playlist(
+    spotify,
+    prepared_import,
+    playlist_name,
+    progress_callback=None,
+):
     rows = prepared_import.rows
-    playlist = spotify.create_playlist(
-        name=playlist_name,
-        description="Ordered CSV import created by RoyalShuffle",
-        public=False,
-    )
+    if progress_callback:
+        progress_callback("Creating playlist...")
+    log_debug("CSV import creating destination playlist")
+    try:
+        playlist = spotify.create_playlist(
+            name=playlist_name,
+            description="Ordered CSV import created by RoyalShuffle",
+            public=False,
+        )
+    except (Exception, KeyboardInterrupt) as exc:
+        log_debug(
+            "CSV import failed; stage=playlist_creation; "
+            f"exception_type={type(exc).__name__}"
+        )
+        raise
     playlist_id = playlist["id"]
+    log_debug(
+        f"CSV import destination playlist created; playlist_id={playlist_id}"
+    )
     uris = [row.uri for row in rows]
 
+    def report_batch(batch_number, total_batches, first_item, last_item, total_items):
+        if progress_callback:
+            progress_callback(
+                f"Adding tracks {first_item}-{last_item} of {total_items}..."
+            )
+
     try:
-        spotify.add_playlist_items(playlist_id, uris)
+        spotify.add_playlist_items(
+            playlist_id,
+            uris,
+            progress_callback=report_batch,
+        )
     except (Exception, KeyboardInterrupt) as exc:
+        items_written = getattr(exc, "items_written", 0)
+        total_items = getattr(exc, "total_items", len(uris))
+        log_debug(
+            "CSV import failed; stage=playlist_population; "
+            f"playlist_id={playlist_id}; items_written={items_written}; "
+            f"total_items={total_items}; "
+            f"exception_type={type(exc).__name__}"
+        )
         raise PlaylistImportPartialWriteError(
             playlist_id=playlist_id,
             playlist_name=playlist_name,
-            items_written=getattr(exc, "items_written", 0),
-            total_items=getattr(exc, "total_items", len(uris)),
+            items_written=items_written,
+            total_items=total_items,
             cause=exc,
         ) from exc
+
+    log_debug(
+        "CSV import completed; "
+        f"playlist_id={playlist_id}; items_written={len(uris)}"
+    )
 
     return PlaylistImportResult(
         playlist_id=playlist_id,

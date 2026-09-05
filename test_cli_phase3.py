@@ -10,10 +10,12 @@ import requests
 
 import cli
 from playlist_export import COLUMNS, export_playlist_csv
-from playlist_import import PlaylistImportRow, PlaylistImportValidationError
+from playlist_import import (
+    PlaylistImportRow,
+    PlaylistImportValidationError,
+    PlaylistImportValidationIssue,
+)
 from playlist_import_workflow import (
-    CatalogValidationError,
-    CatalogValidationIssue,
     PlaylistImportPartialWriteError,
     PlaylistImportResult,
 )
@@ -117,11 +119,11 @@ class Phase3CliTests(unittest.TestCase):
             self.assertTrue(stderr)
 
     @patch("cli.create_imported_playlist")
-    @patch("cli.preflight_playlist_import")
+    @patch("cli.prepare_playlist_import")
     @patch("cli.parse_playlist_csv")
     @patch("cli.restore_spotify_client")
     def test_import_preflights_then_creates_and_reports_counts(
-        self, restore, parse, preflight, create
+        self, restore, parse, prepare, create
     ):
         rows = (
             PlaylistImportRow(2, TRACK_A, "1" * 22),
@@ -129,7 +131,7 @@ class Phase3CliTests(unittest.TestCase):
             PlaylistImportRow(4, TRACK_A, "1" * 22),
         )
         parse.return_value = rows
-        prepared = preflight.return_value
+        prepared = prepare.return_value
         create.return_value = PlaylistImportResult("output-id", "Exact Copy", 3)
         source = self.temporary_path()
 
@@ -141,26 +143,26 @@ class Phase3CliTests(unittest.TestCase):
         self.assertEqual(stderr, "")
         self.assertIn("Tracks written: 3/3", stdout)
         self.assertIn("Output playlist ID: output-id", stdout)
-        preflight.assert_called_once_with(restore.return_value, rows)
+        prepare.assert_called_once_with(rows)
         create.assert_called_once_with(restore.return_value, prepared, "Exact Copy")
 
     @patch("cli.create_imported_playlist")
-    @patch("cli.preflight_playlist_import")
+    @patch("cli.prepare_playlist_import")
     @patch("cli.parse_playlist_csv")
     @patch("cli.restore_spotify_client")
     def test_import_validation_failure_creates_no_output(
-        self, _restore, parse, preflight, create
+        self, _restore, parse, prepare, create
     ):
         parse.return_value = (PlaylistImportRow(2, TRACK_A, "1" * 22),)
-        preflight.side_effect = CatalogValidationError([
-            CatalogValidationIssue(2, "1" * 22, "removed_track", "Track was removed.")
+        parse.side_effect = PlaylistImportValidationError([
+            PlaylistImportValidationIssue(2, "malformed_uri", "Track URI was malformed.")
         ])
         result, stdout, stderr = self.run_cli(
             ["import", str(self.temporary_path()), "--name", "Copy"]
         )
         self.assertEqual(result, cli.EXIT_USAGE)
         self.assertEqual(stdout, "")
-        self.assertIn("Row 2: Track was removed.", stderr)
+        self.assertIn("Row 2: Track URI was malformed.", stderr)
         create.assert_not_called()
 
     def test_import_partial_population_is_preserved_and_returns_8(self):

@@ -1,7 +1,7 @@
 import sys
 import types
 import unittest
-from unittest.mock import Mock, call
+from unittest.mock import ANY, Mock, patch
 
 try:
     import requests
@@ -15,12 +15,11 @@ except ModuleNotFoundError:
 
 from playlist_import import PlaylistImportRow
 from playlist_import_workflow import (
-    CatalogValidationError,
     PlaylistImportPartialWriteError,
     create_imported_playlist,
-    preflight_playlist_import,
+    prepare_playlist_import,
 )
-from spotify_client import SpotifyTrackNotFoundError
+from spotify_client import SpotifyClient
 
 
 def row(line_number, marker):
@@ -33,63 +32,23 @@ def row(line_number, marker):
 
 
 class PlaylistImportWorkflowTests(unittest.TestCase):
-    def test_preflight_uses_first_seen_unique_order(self):
-        spotify = Mock()
-        spotify.get_track.return_value = {"type": "track"}
+    @patch("playlist_import_workflow.log_debug")
+    def test_prepare_is_local_and_preserves_rows(self, log_debug):
         rows = [row(2, 1), row(3, 2), row(4, 1), row(5, 3)]
 
-        prepared = preflight_playlist_import(spotify, rows)
+        prepared = prepare_playlist_import(rows)
 
         self.assertEqual(prepared.rows, tuple(rows))
-        self.assertEqual(
-            spotify.get_track.call_args_list,
-            [call("1" * 22), call("2" * 22), call("3" * 22)],
-        )
-
-    def test_removed_duplicate_maps_to_every_original_row(self):
-        spotify = Mock()
-        spotify.get_track.side_effect = SpotifyTrackNotFoundError("1" * 22)
-        rows = [row(2, 1), row(7, 1)]
-
-        with self.assertRaises(CatalogValidationError) as caught:
-            preflight_playlist_import(spotify, rows)
-
-        self.assertEqual(
-            [issue.line_number for issue in caught.exception.issues],
-            [2, 7],
-        )
-
-    def test_unavailable_and_restricted_tracks_accumulate(self):
-        spotify = Mock()
-        spotify.get_track.side_effect = [
-            {"type": "track", "is_playable": False},
-            {"type": "track", "restrictions": {"reason": "market"}},
-        ]
-
-        with self.assertRaises(CatalogValidationError) as caught:
-            preflight_playlist_import(spotify, [row(2, 1), row(3, 2)])
-
-        self.assertEqual(
-            [issue.code for issue in caught.exception.issues],
-            ["unavailable_track", "restricted_track"],
-        )
-        spotify.create_playlist.assert_not_called()
-
-    def test_operational_lookup_failure_propagates_and_creates_nothing(self):
-        spotify = Mock()
-        spotify.get_track.side_effect = RuntimeError("network")
-
-        with self.assertRaises(RuntimeError):
-            preflight_playlist_import(spotify, [row(2, 1)])
-
-        spotify.create_playlist.assert_not_called()
+        messages = [item.args[0] for item in log_debug.call_args_list]
+        self.assertIn("CSV import rows parsed=4", messages)
+        self.assertIn("CSV import valid track URIs=4", messages)
+        self.assertIn("CSV import unique track IDs=3", messages)
 
     def test_creates_new_private_playlist_with_exact_order_and_duplicates(self):
         spotify = Mock()
-        spotify.get_track.return_value = {"type": "track"}
         spotify.create_playlist.return_value = {"id": "new-id"}
         rows = [row(2, 1), row(3, 2), row(4, 1)]
-        prepared = preflight_playlist_import(spotify, rows)
+        prepared = prepare_playlist_import(rows)
 
         result = create_imported_playlist(spotify, prepared, "CSV Copy")
 
@@ -101,6 +60,7 @@ class PlaylistImportWorkflowTests(unittest.TestCase):
         spotify.add_playlist_items.assert_called_once_with(
             "new-id",
             [item.uri for item in rows],
+            progress_callback=ANY,
         )
         self.assertEqual(result.playlist_id, "new-id")
         self.assertEqual(result.item_count, 3)
@@ -124,6 +84,41 @@ class PlaylistImportWorkflowTests(unittest.TestCase):
         self.assertEqual(error.total_items, 150)
         self.assertIs(error.cause, failure)
         spotify.clear_playlist.assert_not_called()
+
+    @patch("spotify_client.requests.get")
+    @patch("spotify_client.requests.post")
+    def test_500_track_import_uses_one_creation_and_five_population_requests(
+        self, post, get
+    ):
+        def successful_response(url, **_kwargs):
+            result = Mock(status_code=201, headers={})
+            result.json.return_value = (
+                {"id": "large-id"} if url.endswith("/me/playlists") else {}
+            )
+            return result
+
+        post.side_effect = successful_response
+        spotify = SpotifyClient("test-token")
+        rows = tuple(
+            PlaylistImportRow(
+                line_number=index + 2,
+                uri=f"spotify:track:{index:022d}",
+                track_id=f"{index:022d}",
+            )
+            for index in range(500)
+        )
+
+        result = create_imported_playlist(
+            spotify, prepare_playlist_import(rows), "Large Import"
+        )
+
+        self.assertEqual(result.item_count, 500)
+        get.assert_not_called()
+        self.assertEqual(post.call_count, 6)
+        self.assertTrue(post.call_args_list[0].args[0].endswith("/me/playlists"))
+        batches = [item.kwargs["json"]["uris"] for item in post.call_args_list[1:]]
+        self.assertEqual([len(batch) for batch in batches], [100] * 5)
+        self.assertEqual([uri for batch in batches for uri in batch], [r.uri for r in rows])
 
 
 if __name__ == "__main__":

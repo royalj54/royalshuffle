@@ -106,8 +106,8 @@ platform data directory (`$XDG_DATA_HOME/royalshuffle/Exports`, or
 CSV filename and creates missing parent directories. Export never silently
 overwrites an existing file.
 
-`import` requires `--name` and validates the entire CSV and Spotify catalog
-before creating a playlist. It preserves CSV row order and duplicate entries
+`import` requires `--name` and strictly validates Spotify track URI syntax
+locally before creating a playlist. It preserves CSV row order and duplicate entries
 exactly; it is not a shuffle operation. Imported playlists are ordinary private
 playlists, not managed RoyalShuffle outputs. If population fails after creation,
 the partial playlist is preserved and the command reports its ID and confirmed

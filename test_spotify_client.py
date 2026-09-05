@@ -409,6 +409,26 @@ class SpotifyClientTests(unittest.TestCase):
             uris[100:],
         )
 
+    @patch("spotify_client.requests.post")
+    def test_batch_progress_is_coarse_and_reports_ranges(self, post):
+        post.side_effect = [response(), response(), response()]
+        progress = Mock()
+
+        self.client.add_playlist_items(
+            "playlist-id",
+            [f"uri-{index}" for index in range(205)],
+            progress_callback=progress,
+        )
+
+        self.assertEqual(
+            progress.call_args_list,
+            [
+                call(1, 3, 1, 100, 205),
+                call(2, 3, 101, 200, 205),
+                call(3, 3, 201, 205, 205),
+            ],
+        )
+
 
 class RoyalShuffleWorkflowTests(unittest.TestCase):
     @patch("royalshuffle.add_managed_playlist_id")
