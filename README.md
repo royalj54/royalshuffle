@@ -10,7 +10,7 @@ release tracks.
 | --- | --- | --- |
 | **Windows** | **Stable — 0.4.2** | [Download the installer](https://github.com/royalj54/royalshuffle/releases/tag/windows%2Fv0.4.2) · [Usage and build guide](docs/windows/README.md) |
 | **Linux** | **Prerelease — 0.5.0rc2** | [Download RC2](https://github.com/royalj54/royalshuffle/releases/tag/v0.5.0-rc.2) · [CLI guide](docs/linux/README.md) · [Acceptance checklist](docs/native-linux-acceptance.md) |
-| **Android** | **Prototype — 0.2.0 development line** | [Android source and documentation](https://github.com/royalj54/royalshuffle/tree/android-prototype/android) |
+| **Android** | **Prototype — 0.2.0 development line** | [Android source and documentation](https://github.com/royalj54/royalshuffle/tree/android/main/android) |
 
 Spotify authentication currently requires an account allowlisted for the
 RoyalShuffle Spotify Developer app.
@@ -20,7 +20,7 @@ RoyalShuffle Spotify Developer app.
 Windows and Linux share the Python/Core implementation. Windows adds a Tkinter
 desktop GUI plus PyInstaller and Inno Setup packaging; Linux uses the CLI and
 Python wheel/source-distribution packaging. Android is currently a separate
-native Kotlin/Gradle implementation maintained on `android-prototype`.
+native Kotlin/Gradle implementation maintained on `android/main`.
 
 Shared Windows/Linux fixes normally belong on `main`. See the
 [architecture overview](docs/architecture.md) for component and branch

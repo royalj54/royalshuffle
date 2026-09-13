@@ -12,7 +12,7 @@ installer, and launch RoyalShuffle from the Start menu or optional desktop
 shortcut.
 
 The immutable release source is tagged `windows/v0.4.2`. The retained
-`windows/0.4.2` branch is the Windows 0.4.x maintenance line; general Windows
+`release/windows/0.4` branch is the Windows 0.4.x maintenance line; general Windows
 and shared/Core development belongs on `main`.
 
 ## Basic usage

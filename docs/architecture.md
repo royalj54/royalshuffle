@@ -37,14 +37,18 @@ See the [Linux guide](linux/README.md).
 
 Android is a separate Kotlin/Gradle application with its own authentication,
 Spotify API, shuffle, diagnostics, UI, and test code. It remains on the
-[`android-prototype`](https://github.com/royalj54/royalshuffle/tree/android-prototype/android)
+[`android/main`](https://github.com/royalj54/royalshuffle/tree/android/main/android)
 branch while its product and branch lifecycle are still under development.
 It is not built from the Python source tree on `main`.
 
 ## Branch boundaries
 
 - General shared/Core, Windows GUI, and Linux CLI development targets `main`.
-- Supported older platform releases may use a temporary maintenance branch.
+- Supported older platform releases use maintenance branches named
+  `release/<platform>/<major.minor>` when independent backports are needed.
+- Windows 0.4.x maintenance uses `release/windows/0.4`. Linux development
+  remains on `main`; create `release/linux/0.5` only if the stable 0.5 line
+  later requires independent maintenance.
 - Immutable releases are identified by tags.
 - Android-only work remains on the Android development line until an explicit
   integration decision is made.

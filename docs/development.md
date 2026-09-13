@@ -2,7 +2,7 @@
 
 This guide applies to the shared Python/Core, Windows GUI, and Linux CLI on
 `main`. Android remains a separate development line; use its
-[branch documentation](https://github.com/royalj54/royalshuffle/tree/android-prototype/android)
+[branch documentation](https://github.com/royalj54/royalshuffle/tree/android/main/android)
 for repository-visible Android instructions.
 
 ## Python environment

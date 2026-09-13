@@ -41,9 +41,11 @@ adopts one unified cross-platform version.
 
 - `main` is the moving canonical branch for shared Python/Core, Windows GUI,
   Linux CLI, CI, packaging definitions, and repository documentation.
-- Android remains on its separate development line for now.
-- A supported release family may use a maintenance branch when it needs
-  backports.
+- Android remains on its separate `android/main` development line for now.
+- A supported release family uses `release/<platform>/<major.minor>` when it
+  needs independent backports. Windows 0.4.x uses `release/windows/0.4`.
+- Linux development remains on `main`; create `release/linux/0.5` only if the
+  stable Linux 0.5 line later needs independent maintenance.
 - An exact published release is always identified by an immutable annotated
   tag, not merely by a branch name.
 
