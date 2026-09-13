@@ -1,204 +1,66 @@
 # RoyalShuffle
 
-Transparent, user-controlled true random shuffle for Spotify playlists.
+RoyalShuffle creates transparent, user-controlled randomized copies of Spotify
+playlists. The repository supports three platform surfaces with independent
+release tracks.
 
-This repository contains the shared Python/Core implementation, the stable
-Windows desktop GUI, the Linux command-line application, packaging, tests, and
-project documentation. Windows and Linux have independent release versions:
+## Platforms
 
-| Platform | Current release | Status |
+| Platform | Status | Get started |
 | --- | --- | --- |
-| Windows GUI | [0.4.2](https://github.com/royalj54/royalshuffle/releases/tag/windows%2Fv0.4.2) | Stable installer release |
-| Linux CLI/Core | [0.5.0rc2](https://github.com/royalj54/royalshuffle/releases/tag/v0.5.0-rc.2) | Release candidate; native Linux acceptance pending |
-| Android | 0.2.0 development line | Maintained separately and not included in this Python source tree |
+| **Windows** | **Stable — 0.4.2** | [Download the installer](https://github.com/royalj54/royalshuffle/releases/tag/windows%2Fv0.4.2) · [Usage and build guide](docs/windows/README.md) |
+| **Linux** | **Prerelease — 0.5.0rc2** | [Download RC2](https://github.com/royalj54/royalshuffle/releases/tag/v0.5.0-rc.2) · [CLI guide](docs/linux/README.md) · [Acceptance checklist](docs/native-linux-acceptance.md) |
+| **Android** | **Prototype — 0.2.0 development line** | [Android source and documentation](https://github.com/royalj54/royalshuffle/tree/android-prototype/android) |
 
-The shared source on `main` can move ahead of either released platform. Use an
-immutable release tag when reproducing or packaging a published release.
+Spotify authentication currently requires an account allowlisted for the
+RoyalShuffle Spotify Developer app.
 
-## Windows desktop GUI
+## Architecture
 
-Windows users should install the signed-off 0.4.2 release from
-[RoyalShuffle for Windows 0.4.2](https://github.com/royalj54/royalshuffle/releases/tag/windows%2Fv0.4.2).
-The release provides the installer and its SHA-256 checksum. Windows 0.4.2 uses
-the shared Python/Core code with a Tkinter desktop interface; its installer and
-executable version metadata remain on the independent Windows version track.
+Windows and Linux share the Python/Core implementation. Windows adds a Tkinter
+desktop GUI plus PyInstaller and Inno Setup packaging; Linux uses the CLI and
+Python wheel/source-distribution packaging. Android is currently a separate
+native Kotlin/Gradle implementation maintained on `android-prototype`.
 
-## Linux/WSL CLI
+Shared Windows/Linux fixes normally belong on `main`. See the
+[architecture overview](docs/architecture.md) for component and branch
+boundaries.
 
-RoyalShuffle 0.5.0rc2 is the current Linux CLI release candidate. Native Linux
-acceptance is still pending. This prerelease has been validated under Ubuntu
-WSL2 and automated Ubuntu CI and is intended for native-Linux acceptance
-testing. It is distributed through GitHub as source, a wheel, and an sdist; it
-is not published on PyPI and is not a standalone executable or distro package.
+## Development and testing
 
-RoyalShuffle supports Python 3.10 and 3.12. The CLI does not require Tkinter;
-Tkinter is needed only to run the optional desktop GUI from source. Spotify
-authentication requires the Spotify account to be allowlisted as a user of the
-RoyalShuffle Spotify Developer app while the app remains in development mode.
-
-### Install the Linux release candidate
-
-For native-Linux acceptance, install the attached wheel in a fresh virtual
-environment. Do not use the source archive or clone the default branch.
-Prerequisites are Python 3.10 or 3.12, the Python `venv` module, and pip. On
-distributions that split these from Python, install the corresponding venv
-package first (for example, `python3-venv`). Then:
-
-```bash
-python3 -m venv ~/royalshuffle-0.5.0rc2-test
-source ~/royalshuffle-0.5.0rc2-test/bin/activate
-python -m pip install --upgrade pip
-python -m pip install "https://github.com/royalj54/royalshuffle/releases/download/v0.5.0-rc.2/royalshuffle-0.5.0rc2-py3-none-any.whl"
-royalshuffle --version
-royalshuffle diagnostics
-```
-
-The version command must report `RoyalShuffle 0.5.0rc2`. Follow the
-[native Linux acceptance checklist](docs/native-linux-acceptance.md) for the
-complete external test procedure.
-
-### Install from source
-
-For a reproducible Linux release installation, clone the repository and check
-out its immutable release tag:
+Clone `main`, create a virtual environment, and install the runtime dependency:
 
 ```bash
 git clone https://github.com/royalj54/royalshuffle.git
 cd royalshuffle
-git checkout v0.5.0-rc.2
-python3 -m venv .venv
-source .venv/bin/activate
+python -m venv .venv
 python -m pip install --upgrade pip
-python -m pip install .
+python -m pip install -r requirements.txt
 ```
 
-For development, activate a virtual environment and use an editable install:
+The CI matrix covers Linux/Core on Python 3.10 and 3.12 and the complete
+Windows regression suite on Python 3.12. Platform builds, test commands, and
+contributor workflow are documented in the
+[development guide](docs/development.md).
 
-```bash
-git switch main
-python -m pip install -e .
-```
+## Versioning and releases
 
-The source tree can also be used without installation with
-`python3 -m cli --help`, but an installed virtual environment is recommended.
+Windows, Linux, and Android currently have independent versions. Published
+releases are immutable and should be reproduced from their tags rather than
+from a moving branch. Existing release tags remain valid; future
+platform-specific releases use platform-prefixed tags such as
+`windows/v0.4.3`, `linux/v0.5.0`, and `android/v0.3.0`.
 
-To upgrade a release installation, fetch or download the newer tagged source,
-activate the same virtual environment, and reinstall it:
+See [versioning and releases](docs/versioning.md) for the complete policy and
+the preserved legacy Linux RC tag names.
 
-```bash
-git fetch --tags
-git checkout <new-release-tag>
-python -m pip install --upgrade .
-```
+## Contributing
 
-To uninstall the program:
+Use a focused branch, keep shared Python changes cross-platform, add tests for
+behavioral changes, and run the relevant local suites before proposing a
+change. Start with the [development guide](docs/development.md) and keep
+platform-specific release work separate from general development.
 
-```bash
-python -m pip uninstall royalshuffle
-```
+## License
 
-Uninstalling the package does not delete saved authentication, configuration,
-state, diagnostics, or exported CSV files.
-
-### Developer tests
-
-The headless core/CLI suite does not require Tkinter:
-
-```bash
-python -m unittest test_app_paths test_auth_logging test_cli test_cli_phase3 test_playlist_import test_playlist_import_workflow test_playlist_service test_royalshuffle_workflow test_session_service test_spotify_client
-```
-
-Run the complete suite, including GUI tests, with:
-
-```bash
-python -m unittest discover -v
-```
-
-On a minimal Linux installation without Tkinter, the five GUI-dependent test
-modules are reported as skipped. Other import failures remain test failures.
-
-The Linux/WSL CLI supports:
-
-```text
-royalshuffle --version
-royalshuffle --help
-royalshuffle diagnostics
-royalshuffle auth
-royalshuffle playlists
-royalshuffle shuffle <playlist>
-royalshuffle export <playlist> [--output <csv-file>]
-royalshuffle import <csv> --name "Playlist Name"
-```
-
-Authentication prints the Spotify authorization URL and supports either the
-localhost callback or pasting the complete callback URL. Run
-`royalshuffle auth`, authorize RoyalShuffle in the browser, then either press
-Enter to wait for `http://127.0.0.1:8888/callback` or paste the complete
-callback URL shown by the browser.
-
-On Linux, RoyalShuffle uses these locations unless the corresponding XDG
-environment variable is set:
-
-| Data | Default location |
-| --- | --- |
-| Authentication token | `~/.config/royalshuffle/token.json` |
-| Managed playlist state | `~/.local/state/royalshuffle/managed_playlists.json` |
-| Other application state | `~/.local/state/royalshuffle/` |
-| Diagnostics log | `~/.local/state/royalshuffle/Diagnostics/royalshuffle_debug.log` |
-| CSV exports | `~/.local/share/royalshuffle/Exports/` |
-
-`royalshuffle diagnostics` prints the resolved paths and contains no access
-token. When reporting a failure, include the Linux distribution, Python and
-RoyalShuffle versions, the exact command and exit code, redacted diagnostics,
-and whether authentication used the automatic browser callback or pasted-URL
-fallback. Also report any partial Spotify playlist ID printed after a failed
-write. Review the diagnostics log before sharing it, then report the result by
-the channel requested by the release coordinator or in the
-[GitHub issue tracker](https://github.com/royalj54/royalshuffle/issues).
-
-`shuffle` accepts a Spotify playlist ID, URI, URL, or an unambiguous exact
-playlist name. It creates or updates the managed `- RANDOM` output using
-RoyalShuffle's true-random mode. RoyalShuffle requests `public: false` when it
-creates an output; under Spotify Web API semantics, this asks Spotify not to
-publish the playlist on the user's profile or in search, but is not an access-
-control guarantee. Managed outputs are identified by stored Spotify playlist
-IDs, not by their names. If a write fails after an output exists, RoyalShuffle
-leaves that output in place and reports confirmed tracks written versus the
-total intended instead of silently rolling it back.
-
-`export` accepts the same playlist reference formats as `shuffle` and writes the
-playlist in its current order, including duplicates and local items, using the
-RoyalShuffle CSV schema. By default it writes `<playlist name>.csv` under the
-platform data directory (`$XDG_DATA_HOME/royalshuffle/Exports`, or
-`~/.local/share/royalshuffle/Exports` when unset). `--output` accepts an explicit
-CSV filename and creates missing parent directories. Export never silently
-overwrites an existing file.
-
-`import` requires `--name` and strictly validates Spotify track URI syntax
-locally before creating a playlist. It preserves CSV row order and duplicate entries
-exactly; it is not a shuffle operation. Imported playlists are ordinary private
-playlists, not managed RoyalShuffle outputs. If population fails after creation,
-the partial playlist is preserved and the command reports its ID and confirmed
-track count. Incomplete writes return exit code 8, while Ctrl+C returns 130.
-
-Building distributions requires the `build` package. Build isolation installs
-the declared setuptools requirement automatically:
-
-```bash
-python -m pip install build
-python -m build
-```
-
-Exit codes:
-
-| Code | Meaning |
-| ---: | --- |
-| 0 | Success |
-| 2 | Invalid command-line usage |
-| 3 | Authentication or saved-session requirement |
-| 4 | Network or Spotify API failure |
-| 5 | Spotify quota or retry-later condition |
-| 6 | Invalid local state or internal failure |
-| 7 | No eligible source playlists |
-| 8 | Output playlist exists, but its write did not complete |
-| 130 | Interrupted with Ctrl+C |
+RoyalShuffle is distributed under the [MIT License](LICENSE).
