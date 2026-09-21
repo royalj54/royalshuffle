@@ -367,10 +367,11 @@ class CsvImportUiTests(unittest.TestCase):
             Mock(),
             export_button,
             import_button,
+            Mock(),
         )
 
         import_button.config.assert_called_once_with(state="normal")
-        export_button.config.assert_not_called()
+        export_button.config.assert_called_once_with(state="disabled")
 
 
 if __name__ == "__main__":
