@@ -465,6 +465,7 @@ def load_spotify_session(
     royal_shuffle_button,
     export_csv_button,
     import_csv_button,
+    refresh_playlist_view,
 ):
     log_debug("Creating Spotify client session")
     client = SpotifyClient(access_token)
@@ -482,48 +483,26 @@ def load_spotify_session(
     managed_playlist_ids = load_managed_playlist_ids()
     eligible_playlists.clear()
     eligible_playlists.extend(
-        eligible_source_playlists(playlists, managed_playlist_ids)
+        sorted(
+            eligible_source_playlists(playlists, managed_playlist_ids),
+            key=lambda playlist: playlist["name"].casefold(),
+        )
     )
 
     playlist_listbox.config(state="normal")
     import_csv_button.config(state="normal")
-    playlist_listbox.delete(0, tk.END)
-
-    for playlist in eligible_playlists:
-        playlist_listbox.insert(
-            tk.END,
-            playlist["name"],
-        )
-
+    selected_playlist_state["playlist"] = None
+    royal_shuffle_button.config(state="disabled")
+    export_csv_button.config(state="disabled")
     if LAST_PLAYLIST_FILE.exists():
         last_playlist_id = LAST_PLAYLIST_FILE.read_text().strip()
 
-        for index, playlist in enumerate(eligible_playlists):
+        for playlist in eligible_playlists:
             if playlist["id"] == last_playlist_id:
-                playlist_listbox.selection_set(index)
-                playlist_listbox.activate(index)
-                playlist_listbox.see(index)
-
                 selected_playlist_state["playlist"] = playlist
+                break
 
-                status_label.config(
-                    text=f'Selected: {playlist["name"]}'
-                )
-
-                royal_shuffle_button.config(
-                    state="normal"
-                )
-                export_csv_button.config(
-                    state="normal"
-                )
-
-                connect_button.config(state="disabled")
-                return
-
-    status_label.config(
-        text="Connected to Spotify • Select a playlist"
-    )
-
+    refresh_playlist_view()
     connect_button.config(state="disabled")
 
 def connect_spotify(
@@ -536,6 +515,7 @@ def connect_spotify(
     royal_shuffle_button,
     export_csv_button,
     import_csv_button,
+    refresh_playlist_view,
 ):
     log_debug("Connect Spotify button pressed")
 
@@ -597,6 +577,7 @@ def connect_spotify(
                 royal_shuffle_button,
                 export_csv_button,
                 import_csv_button,
+                refresh_playlist_view,
             )
             log_debug("Spotify connection completed successfully")
 
@@ -705,9 +686,19 @@ def main():
             royal_shuffle_button,
             export_csv_button,
             import_csv_button,
+            refresh_playlist_view,
         )
     )
     connect_button.pack(pady=10)
+
+    playlist_search_frame = tk.Frame(root)
+    playlist_search_frame.pack(fill="x", padx=20)
+    tk.Label(playlist_search_frame, text="Search playlists:").pack(side="left")
+    playlist_query = tk.StringVar(master=root)
+    playlist_search = tk.Entry(
+        playlist_search_frame, textvariable=playlist_query, state="disabled"
+    )
+    playlist_search.pack(side="left", fill="x", expand=True, padx=(8, 0))
 
     playlist_frame = tk.Frame(root)
     playlist_frame.pack(
@@ -727,6 +718,7 @@ def main():
         width=60,
         height=8,
         state="disabled",
+        exportselection=False,
         yscrollcommand=playlist_scrollbar.set,
     )
 
@@ -746,6 +738,7 @@ def main():
     )
 
     eligible_playlists = []
+    visible_playlists = []
 
     selected_playlist_state = {
         "playlist": None
@@ -754,6 +747,49 @@ def main():
     client_state = {
         "client": None
     }
+
+    def committed_playlist_is_visible():
+        committed = selected_playlist_state["playlist"]
+        return committed is not None and any(
+            playlist["id"] == committed["id"] for playlist in visible_playlists
+        )
+
+    def refresh_playlist_view(*_args):
+        query = playlist_query.get().casefold()
+        visible_playlists[:] = [
+            playlist for playlist in eligible_playlists
+            if query in playlist["name"].casefold()
+        ]
+        playlist_listbox.delete(0, tk.END)
+        for playlist in visible_playlists:
+            playlist_listbox.insert(tk.END, playlist["name"])
+
+        committed = selected_playlist_state["playlist"]
+        available = committed_playlist_is_visible()
+        if available:
+            index = next(
+                index for index, playlist in enumerate(visible_playlists)
+                if playlist["id"] == committed["id"]
+            )
+            playlist_listbox.selection_set(index)
+            playlist_listbox.activate(index)
+            playlist_listbox.see(index)
+            message = f'Selected: {committed["name"]}'
+        elif committed:
+            message = f'Selected: {committed["name"]} • Hidden by filter'
+        else:
+            message = "Connected to Spotify • Select a playlist"
+        if not visible_playlists:
+            message = "No matching playlists" + (
+                f" • {message}" if committed else ""
+            )
+        status_label.config(text=message)
+        state = "normal" if available else "disabled"
+        royal_shuffle_button.config(state=state)
+        export_csv_button.config(state=state)
+        playlist_search.config(state="normal")
+
+    playlist_query.trace_add("write", refresh_playlist_view)
 
     def update_status(message):
         print(f"status: {message}")
@@ -773,7 +809,7 @@ def main():
             )
             return
 
-        selected_playlist = eligible_playlists[selection[0]]
+        selected_playlist = visible_playlists[selection[0]]
         selected_playlist_state["playlist"] = selected_playlist
 
         LAST_PLAYLIST_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -815,7 +851,7 @@ def main():
     def handle_royal_shuffle():
         selected_playlist = selected_playlist_state["playlist"]
 
-        if not selected_playlist:
+        if not committed_playlist_is_visible():
             status_label.config(
                 text="Select a playlist first"
             )
@@ -930,7 +966,7 @@ def main():
     def handle_export_csv():
         selected_playlist = selected_playlist_state["playlist"]
 
-        if not selected_playlist:
+        if not committed_playlist_is_visible():
             status_label.config(
                 text="Select a playlist first"
             )
@@ -1025,6 +1061,7 @@ def main():
                 royal_shuffle_button,
                 export_csv_button,
                 import_csv_button,
+                refresh_playlist_view,
             )
 
         except SpotifyRetryLaterError as exc:
