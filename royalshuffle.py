@@ -7,6 +7,8 @@ from playlist_service import eligible_source_playlists
 from playlist_registry import (
     add_managed_playlist_id,
     load_managed_playlist_ids,
+    timed_output_id,
+    register_timed_output,
 )
 from shuffle_engine import shuffle_items
 from spotify_client import SpotifyClient
@@ -22,6 +24,31 @@ class RoyalShuffleResult:
     items_written: int
     skipped_item_count: int
     action: str
+    requested_duration_ms: int | None = None
+    duration_ms: int | None = None
+    source_shorter_than_target: bool = False
+
+
+class SessionLengthError(ValueError):
+    pass
+
+
+def apply_session_length(items, target_ms):
+    """Consume a prefix of an already randomized sequence; never choose by duration."""
+    if not items:
+        raise SessionLengthError("No eligible tracks. Full Playlist remains available.")
+    if any(type(item.get("duration_ms")) is not int or item["duration_ms"] <= 0
+           for item in items):
+        raise SessionLengthError(
+            "Timed sessions require a valid positive duration for every eligible track. "
+            "Full Playlist remains available."
+        )
+    total = 0
+    for index, item in enumerate(items):
+        total += item["duration_ms"]
+        if total >= target_ms:
+            return items[:index + 1], total
+    return items[:], total
 
 
 class RoyalShufflePartialWriteError(Exception):
@@ -35,12 +62,21 @@ def royal_shuffle(
     source_playlist,
     status_callback=None,
     output_playlist_name=None,
+    session_minutes=None,
 ):
     def report_status(message):
         if status_callback:
             status_callback(message)
 
     source_playlist_id = source_playlist["id"]
+    if session_minutes is not None and (
+        type(session_minutes) is not int or session_minutes not in (30, 60, 90)
+    ):
+        raise SessionLengthError("Choose Full Playlist, 30M, 60M, or 90M.")
+    target_ms = session_minutes * 60_000 if session_minutes is not None else None
+    duration_ms = None
+    if target_ms is not None:
+        output_playlist_name = f'{source_playlist["name"]} - RANDOM {session_minutes}M'
     if output_playlist_name is None:
         output_playlist_name = f'{source_playlist["name"]} - RANDOM'
 
@@ -77,27 +113,38 @@ def royal_shuffle(
     )
 
     items = shuffle_items(items)
+    if target_ms is not None:
+        items, duration_ms = apply_session_length(items, target_ms)
+    duration_result = dict(
+        requested_duration_ms=target_ms,
+        duration_ms=duration_ms,
+        source_shorter_than_target=target_ms is not None and duration_ms < target_ms,
+    )
 
     report_status(
         f'Preparing {output_playlist_name}...'
     )
     
-    matching_playlists = spotify.find_playlists_by_name(
-        output_playlist_name
-    )
-    managed_playlist_ids = load_managed_playlist_ids()
-    managed_matches = [
-        playlist
-        for playlist in matching_playlists
-        if playlist["id"] in managed_playlist_ids
-    ]
-
-    if len(managed_matches) > 1:
-        raise ValueError(
-            "More than one managed playlist has the requested name."
-        )
-
-    playlist = managed_matches[0] if managed_matches else None
+    if target_ms is not None:
+        bound_id = timed_output_id(source_playlist_id, session_minutes)
+        playlist = None
+        if bound_id is not None:
+            playlist = next((candidate for candidate in spotify.get_playlists()
+                             if candidate["id"] == bound_id), None)
+            if playlist is None:
+                raise SessionLengthError(
+                    f"Managed output {bound_id} is missing or inaccessible. "
+                    "Restore access before retrying; no replacement was created."
+                )
+            output_playlist_name = playlist["name"]
+    else:
+        matching_playlists = spotify.find_playlists_by_name(output_playlist_name)
+        managed_playlist_ids = load_managed_playlist_ids()
+        managed_matches = [playlist for playlist in matching_playlists
+                           if playlist["id"] in managed_playlist_ids]
+        if len(managed_matches) > 1:
+            raise ValueError("More than one managed playlist has the requested name.")
+        playlist = managed_matches[0] if managed_matches else None
 
     playlist_action = "updated" if playlist else "created"
 
@@ -114,7 +161,10 @@ def royal_shuffle(
 
         output_playlist_id = playlist["id"]
         try:
-            add_managed_playlist_id(output_playlist_id)
+            if target_ms is None:
+                add_managed_playlist_id(output_playlist_id)
+            else:
+                register_timed_output(source_playlist_id, session_minutes, output_playlist_id)
         except Exception as exc:
             result = RoyalShuffleResult(
                 source_name=source_playlist["name"],
@@ -125,6 +175,7 @@ def royal_shuffle(
                 items_written=0,
                 skipped_item_count=skipped_item_count,
                 action=playlist_action,
+                **duration_result,
             )
             raise RoyalShufflePartialWriteError(result, exc) from exc
 
@@ -158,6 +209,7 @@ def royal_shuffle(
             items_written=getattr(exc, "items_written", 0),
             skipped_item_count=skipped_item_count,
             action=playlist_action,
+            **duration_result,
         )
         raise RoyalShufflePartialWriteError(result, exc) from exc
 
@@ -175,6 +227,7 @@ def royal_shuffle(
         items_written=items_written,
         skipped_item_count=skipped_item_count,
         action=playlist_action,
+        **duration_result,
     )
 
 def main():

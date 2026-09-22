@@ -60,6 +60,10 @@ class PlaylistDiscoveryTests(unittest.TestCase):
         self.entry = patched("tk.Entry").return_value
         self.variable = patched("tk.StringVar").return_value
         self.variable.get.return_value = ""
+        self.session_variable = Mock()
+        self.session_variable.get.return_value = "Full Playlist"
+        ui.tk.StringVar.side_effect = [self.variable, self.session_variable]
+        self.option_menu = patched("tk.OptionMenu")
         self.listbox_type = patched("tk.Listbox")
         self.listbox = self.listbox_type.return_value
         self.rows = []
