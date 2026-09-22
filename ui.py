@@ -34,7 +34,7 @@ from playlist_import_workflow import (
     create_imported_playlist,
     prepare_playlist_import,
 )
-from royalshuffle import RoyalShufflePartialWriteError, royal_shuffle
+from royalshuffle import RoyalShufflePartialWriteError, SessionLengthError, royal_shuffle
 from session_service import refresh_saved_token_data
 from playlist_registry import (
     add_managed_playlist_id,
@@ -850,6 +850,9 @@ def main():
 
     def handle_royal_shuffle():
         selected_playlist = selected_playlist_state["playlist"]
+        session_minutes = {"Full Playlist": None, "30M": 30, "60M": 60, "90M": 90}[
+            session_length.get()
+        ]
 
         if not committed_playlist_is_visible():
             status_label.config(
@@ -864,7 +867,7 @@ def main():
             "Name your shuffled playlist:",
             initialvalue=default_name,
             parent=root,
-        )
+        ) if session_minutes is None else f'{default_name} {session_minutes}M'
 
         if output_playlist_name is None:
             return
@@ -887,11 +890,13 @@ def main():
         root.update_idletasks()
 
         try:
+            session_options = {} if session_minutes is None else {"session_minutes": session_minutes}
             result = royal_shuffle(
                 client_state["client"],
                 selected_playlist,
                 output_playlist_name=output_playlist_name,
                 status_callback=update_status,
+                **session_options,
             )
 
             status_label.config(
@@ -903,6 +908,13 @@ def main():
                         f' • {result.skipped_item_count} local skipped'
                         if result.skipped_item_count
                         else ""
+                    )
+                    + (
+                        f"\nRequested {session_minutes}M; "
+                        f"duration {result.duration_ms / 60_000:.2f} min"
+                        + ("\nEntire eligible source used: shorter than requested session"
+                           if result.source_shorter_than_target else "")
+                        if session_minutes is not None else ""
                     )
                 )
             )
@@ -925,9 +937,12 @@ def main():
                 text=(
                     f"{message} Output preserved with "
                     f"{exc.result.items_written}/{exc.result.total_items} "
-                    "confirmed items."
+                    f"confirmed items. Playlist ID: {exc.result.output_id}"
                 )
             )
+
+        except SessionLengthError as exc:
+            status_label.config(text=str(exc))
 
         except SpotifyRetryLaterError as exc:
             log_debug(
@@ -953,6 +968,14 @@ def main():
             royal_shuffle_button.config(
                 state='normal'
             )
+
+    session_frame = tk.Frame(root)
+    session_frame.pack(pady=5)
+    tk.Label(session_frame, text="Session length:").pack(side="left")
+    session_length = tk.StringVar(master=root, value="Full Playlist")
+    tk.OptionMenu(session_frame, session_length, "Full Playlist", "30M", "60M", "90M").pack(
+        side="left", padx=8
+    )
 
     royal_shuffle_button = tk.Button(
         root,

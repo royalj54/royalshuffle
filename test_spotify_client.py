@@ -44,6 +44,18 @@ def response(status_code=201, retry_after=None, payload=None):
 
 
 class SpotifyClientTests(unittest.TestCase):
+    @patch("spotify_client.log_debug")
+    @patch("spotify_client.requests.get")
+    def test_duration_retained_across_playlist_pages_without_track_lookups(self, get, _log):
+        get.side_effect = [response(200, payload={"items": [{"item": {
+            "uri": "spotify:track:a", "duration_ms": duration
+        }}], "next": "next-page" if index == 0 else None})
+            for index, duration in enumerate((123456, None))]
+        items = self.client.get_playlist_items("source")
+        self.assertEqual([item["duration_ms"] for item in items], [123456, None])
+        self.assertEqual(get.call_count, 2)
+        self.assertEqual(get.call_args_list[1].args[0], "next-page")
+
     def setUp(self):
         self.client = SpotifyClient("test-token")
 
