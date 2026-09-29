@@ -66,3 +66,39 @@ class PlaylistRegistryTests(unittest.TestCase):
         items = [{"id": value, "name": "Source - RANDOM"}
                  for value in ("full", "30", "60", "90", "ordinary")]
         self.assertEqual(eligible_source_playlists(items), [items[-1]])
+
+    def test_remove_stale_binding_and_unreferenced_id_only(self):
+        self.write({"playlist_ids": ["old", "other", "legacy"], "extra": {"keep": True},
+                    "source_outputs": {"source": {"30": "old", "60": "other"}}})
+        registry.remove_timed_output("source", 30, "old")
+        self.assertEqual(json.loads(self.path.read_text()), {
+            "playlist_ids": ["other", "legacy"], "extra": {"keep": True},
+            "source_outputs": {"source": {"60": "other"}}})
+
+    def test_removal_rejects_conflicting_shared_registry_without_writing(self):
+        self.write({"playlist_ids": ["shared"], "source_outputs": {
+            "source": {"30": "shared"}, "other": {"60": "shared"}}})
+        before = self.path.read_bytes()
+        with self.assertRaises(ValueError):
+            registry.remove_timed_output("source", 30, "shared")
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_removal_retains_id_if_another_association_references_it(self):
+        # Defensive reference check even if a future loader permits sharing.
+        data = {"playlist_ids": ["shared"], "source_outputs": {
+            "source": {"30": "shared"}, "other": {"60": "shared"}}}
+        with patch.object(registry, "_load_registry", return_value=data):
+            registry.remove_timed_output("source", 30, "shared")
+        self.assertEqual(json.loads(self.path.read_text()), {
+            "playlist_ids": ["shared"], "source_outputs": {"other": {"60": "shared"}}})
+
+    def test_removal_checks_expected_id_and_preserves_file_on_save_failure(self):
+        registry.register_timed_output("source", 30, "old")
+        before = self.path.read_bytes()
+        with self.assertRaises(ValueError):
+            registry.remove_timed_output("source", 30, "different")
+        self.assertEqual(self.path.read_bytes(), before)
+        with patch.object(Path, "replace", side_effect=OSError("disk error")):
+            with self.assertRaises(OSError):
+                registry.remove_timed_output("source", 30, "old")
+        self.assertEqual(self.path.read_bytes(), before)

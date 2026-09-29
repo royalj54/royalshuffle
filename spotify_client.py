@@ -195,6 +195,8 @@ class SpotifyClient:
                     artist["name"]
                     for artist in item.get("artists", [])
                 )
+                credits = item.get("artists", [])
+                primary_artist = credits[0] if credits else {}
                 album = item.get("album") or {}
                 added_by = entry.get("added_by") or {}
                 external_urls = item.get("external_urls") or {}
@@ -203,6 +205,8 @@ class SpotifyClient:
                     "uri": uri,
                     "name": item.get("name", "Unknown"),
                     "artists": artists,
+                    "primary_artist_id": primary_artist.get("id"),
+                    "primary_artist_name": primary_artist.get("name", ""),
                     "playlist_position": playlist_position,
                     "album": album.get("name", ""),
                     "duration_ms": item.get("duration_ms"),
@@ -243,6 +247,15 @@ class SpotifyClient:
                 raise SpotifyTrackNotFoundError(track_id) from exc
             raise
 
+        return response.json()
+
+    def get_playlist(self, playlist_id):
+        response = self._request(
+            "get",
+            f"https://api.spotify.com/v1/playlists/{playlist_id}",
+            "managed playlist direct lookup",
+            headers=self.headers,
+        )
         return response.json()
 
     def get_playlists(self):

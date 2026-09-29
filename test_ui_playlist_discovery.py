@@ -64,6 +64,10 @@ class PlaylistDiscoveryTests(unittest.TestCase):
         self.session_variable.get.return_value = "Full Playlist"
         ui.tk.StringVar.side_effect = [self.variable, self.session_variable]
         self.option_menu = patched("tk.OptionMenu")
+        self.artist_variable_type = patched("tk.BooleanVar")
+        self.artist_variable = self.artist_variable_type.return_value
+        self.artist_variable.get.return_value = False
+        self.artist_checkbox = patched("tk.Checkbutton")
         self.listbox_type = patched("tk.Listbox")
         self.listbox = self.listbox_type.return_value
         self.rows = []

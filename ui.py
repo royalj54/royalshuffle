@@ -5,6 +5,7 @@ import sys
 import tkinter as tk
 import threading
 import traceback
+from artist_separation import ArtistSeparationError
 
 from auth import (
     start_authentication, 
@@ -850,6 +851,7 @@ def main():
 
     def handle_royal_shuffle():
         selected_playlist = selected_playlist_state["playlist"]
+        separate_by_artist = artist_separation_enabled.get()
         session_minutes = {"Full Playlist": None, "30M": 30, "60M": 60, "90M": 90}[
             session_length.get()
         ]
@@ -891,6 +893,8 @@ def main():
 
         try:
             session_options = {} if session_minutes is None else {"session_minutes": session_minutes}
+            if separate_by_artist:
+                session_options["artist_separation"] = True
             result = royal_shuffle(
                 client_state["client"],
                 selected_playlist,
@@ -941,7 +945,7 @@ def main():
                 )
             )
 
-        except SessionLengthError as exc:
+        except (SessionLengthError, ArtistSeparationError) as exc:
             status_label.config(text=str(exc))
 
         except SpotifyRetryLaterError as exc:
@@ -976,6 +980,8 @@ def main():
     tk.OptionMenu(session_frame, session_length, "Full Playlist", "30M", "60M", "90M").pack(
         side="left", padx=8
     )
+    artist_separation_enabled = tk.BooleanVar(master=root, value=False)
+    tk.Checkbutton(root, text="Artist Separation", variable=artist_separation_enabled).pack()
 
     royal_shuffle_button = tk.Button(
         root,

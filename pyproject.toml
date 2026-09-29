@@ -33,6 +33,7 @@ royalshuffle = "cli:main"
 py-modules = [
     "app_metadata",
     "app_paths",
+    "artist_separation",
     "auth",
     "cli",
     "playlist_export",

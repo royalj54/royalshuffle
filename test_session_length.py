@@ -138,12 +138,34 @@ class SessionLengthTests(unittest.TestCase):
             self.assertEqual(result.output_id, source_id + "-out")
         self.spotify.find_playlists_by_name.assert_not_called()
 
-    def test_missing_bound_output_does_not_replace(self):
+    def test_missing_bound_output_with_ambiguous_lookup_does_not_replace(self):
         registry.register_timed_output("source", 30, "missing")
         self.spotify.get_playlist_items.return_value = [item(1000)]
         self.spotify.get_playlists.return_value = [{"id": "other", "name": "Source - RANDOM 30M"}]
-        with self.assertRaisesRegex(SessionLengthError, "missing or inaccessible"):
-            royal_shuffle(self.spotify, self.source, session_minutes=30)
+        self.spotify.get_playlist.side_effect = TimeoutError("lookup unavailable")
+        before = self.registry_path.read_bytes()
+        with patch("royalshuffle.log_debug") as log:
+            with self.assertRaises(TimeoutError):
+                royal_shuffle(self.spotify, self.source, session_minutes=30)
+        self.assertEqual(self.registry_path.read_bytes(), before)
+        self.assertTrue(any("playlist_id=missing" in call.args[0] and "registry unchanged" in call.args[0]
+                            for call in log.call_args_list))
+        self.spotify.create_playlist.assert_not_called()
+        self.spotify.clear_playlist.assert_not_called()
+
+    def test_failed_resolution_preserves_registry_and_logs_id_without_error_details(self):
+        registry.register_timed_output("source", 30, "existing")
+        before = self.registry_path.read_bytes()
+        self.spotify.get_playlist_items.return_value = [item(1000)]
+        self.spotify.get_playlists.side_effect = TimeoutError("private details")
+        with patch("royalshuffle.log_debug") as log:
+            with self.assertRaises(TimeoutError):
+                royal_shuffle(self.spotify, self.source, session_minutes=30)
+        messages = "\n".join(call.args[0] for call in log.call_args_list)
+        self.assertIn("playlist_id=existing", messages)
+        self.assertIn("exception_type=TimeoutError; registry unchanged", messages)
+        self.assertNotIn("private details", messages)
+        self.assertEqual(self.registry_path.read_bytes(), before)
         self.spotify.create_playlist.assert_not_called()
         self.spotify.clear_playlist.assert_not_called()
 

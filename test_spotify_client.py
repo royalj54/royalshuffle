@@ -46,6 +46,30 @@ def response(status_code=201, retry_after=None, payload=None):
 class SpotifyClientTests(unittest.TestCase):
     @patch("spotify_client.log_debug")
     @patch("spotify_client.requests.get")
+    def test_first_artist_identity_retained_without_extra_requests_or_display_changes(self, get, _log):
+        credits = [
+            [{"id": "blackpink-id", "name": "BLACKPINK"}, {"id": "lisa-id", "name": "LISA"}],
+            [{"id": "lisa-id", "name": "LISA"}],
+            [{"id": "one-id", "name": "Same, Name"}],
+            [{"id": "two-id", "name": "Same, Name"}],
+            [{"name": "Missing ID"}, {"id": "not-a-fallback", "name": "Guest"}],
+            [],
+        ]
+        get.return_value = response(200, payload={"items": [{"item": {
+            "uri": f"spotify:track:{index}", "artists": artists
+        }} for index, artists in enumerate(credits)], "next": None})
+        items = self.client.get_playlist_items("source")
+        self.assertEqual([item["primary_artist_id"] for item in items],
+                         ["blackpink-id", "lisa-id", "one-id", "two-id", None, None])
+        self.assertEqual([item["primary_artist_name"] for item in items],
+                         ["BLACKPINK", "LISA", "Same, Name", "Same, Name", "Missing ID", ""])
+        self.assertEqual([item["artists"] for item in items],
+                         [", ".join(artist["name"] for artist in artists) for artists in credits])
+        get.assert_called_once()
+        self.assertEqual(get.call_args.args[0], "https://api.spotify.com/v1/playlists/source/items")
+
+    @patch("spotify_client.log_debug")
+    @patch("spotify_client.requests.get")
     def test_duration_retained_across_playlist_pages_without_track_lookups(self, get, _log):
         get.side_effect = [response(200, payload={"items": [{"item": {
             "uri": "spotify:track:a", "duration_ms": duration

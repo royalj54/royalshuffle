@@ -89,6 +89,22 @@ def add_managed_playlist_id(playlist_id):
     _save_registry(data)
 
 
+def remove_timed_output(source_id, minutes, expected_output_id):
+    """Remove only the association that was checked, preserving other state."""
+    data = _load_registry()
+    bindings = data.get("source_outputs", {})
+    sessions = bindings.get(source_id, {})
+    if sessions.get(str(minutes)) != expected_output_id:
+        raise ValueError("Managed output binding changed; recovery stopped.")
+    del sessions[str(minutes)]
+    if not sessions:
+        del bindings[source_id]
+    if not any(expected_output_id in other.values() for other in bindings.values()):
+        data["playlist_ids"] = [playlist_id for playlist_id in data.get("playlist_ids", [])
+                                if playlist_id != expected_output_id]
+    _save_registry(data)
+
+
 def load_reviewed_legacy_playlist_ids():
     if not LEGACY_RECOVERY_FILE.exists():
         return set()
