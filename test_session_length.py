@@ -74,12 +74,12 @@ class SessionLengthTests(unittest.TestCase):
         self.spotify.create_playlist.assert_not_called()
         self.spotify.clear_playlist.assert_not_called()
 
-    def test_full_empty_source_retains_existing_behavior(self):
+    def test_full_empty_source_aborts_before_output_resolution(self):
         self.spotify.get_playlist_items.return_value = []
-        result = royal_shuffle(self.spotify, self.source)
-        self.assertEqual(result.total_items, 0)
-        self.spotify.clear_playlist.assert_called_once_with("new")
-        self.spotify.add_playlist_items.assert_called_once_with("new", [])
+        with self.assertRaisesRegex(SessionLengthError, "No eligible tracks"):
+            royal_shuffle(self.spotify, self.source)
+        self.assertEqual([call[0] for call in self.spotify.method_calls], ["get_playlist_items"])
+        self.assertFalse(self.registry_path.exists())
 
     def test_binding_is_durable_before_clear(self):
         self.spotify.get_playlist_items.return_value = [item(1000)]

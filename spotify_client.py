@@ -30,6 +30,19 @@ class SpotifyTrackNotFoundError(Exception):
         super().__init__("Spotify track was not found")
 
 
+class PlaylistItems(list):
+    """Parsed tracks with a per-fetch count of unsupported source items."""
+
+    def __init__(self):
+        super().__init__()
+        self.unsupported_item_count = 0
+
+
+def get_unsupported_item_count(items):
+    # Plain lists remain supported by existing callers and test clients.
+    return items.unsupported_item_count if isinstance(items, PlaylistItems) else 0
+
+
 class SpotifyClient:
     def __init__(self, access_token):
         self.headers = {
@@ -146,7 +159,7 @@ class SpotifyClient:
         return response
 
     def get_playlist_items(self, playlist_id):
-        items = []
+        items = PlaylistItems()
         playlist_position = 0
         page_number = 0
 
@@ -187,6 +200,17 @@ class SpotifyClient:
                     continue
 
                 uri = item.get("uri")
+                item_type = item.get("type")
+                track_uri = isinstance(uri, str) and uri.startswith(
+                    ("spotify:track:", "spotify:local:")
+                )
+                # Missing types may use a track/local URI for compatibility.
+                # Explicit non-track types never reach artist parsing.
+                if (item_type not in (None, "track") or
+                        (item_type is None and not track_uri) or
+                        (isinstance(uri, str) and uri and not track_uri)):
+                    items.unsupported_item_count += 1
+                    continue
 
                 if not uri:
                     continue
@@ -228,7 +252,8 @@ class SpotifyClient:
 
         log_debug(
             "Completed Spotify playlist item fetch; "
-            f"items={len(items)}; pages={page_number}"
+            f"items={len(items)}; pages={page_number}; "
+            f"skipped_unsupported_items={items.unsupported_item_count}"
         )
 
         return items

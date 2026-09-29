@@ -485,7 +485,7 @@ class RoyalShuffleWorkflowTests(unittest.TestCase):
                 "is_local": False,
             },
             {
-                "uri": "spotify:episode:copyable",
+                "uri": "spotify:track:another-copyable",
                 "is_local": False,
             },
             {
@@ -511,7 +511,7 @@ class RoyalShuffleWorkflowTests(unittest.TestCase):
             "output-id",
             [
                 "spotify:track:copyable",
-                "spotify:episode:copyable",
+                "spotify:track:another-copyable",
             ],
         )
         self.assertEqual(result.items_written, 2)

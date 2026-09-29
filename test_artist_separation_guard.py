@@ -62,8 +62,8 @@ class ArtistSeparationGuardTests(unittest.TestCase):
         self.spotify.add_playlist_items.assert_called_once_with(
             "new", [item["uri"] for item in separated])
 
-    def test_unavoidable_minimum_and_empty_and_singleton_pass(self):
-        for artists in ("AABA", "AAAA", "", "A"):
+    def test_unavoidable_minimum_and_singleton_pass(self):
+        for artists in ("AABA", "AAAA", "A"):
             with self.subTest(artists=artists):
                 self.spotify.reset_mock()
                 items = self.tracks(artists)

@@ -18,6 +18,7 @@ from auth import (
 )
 
 from spotify_client import (
+    get_unsupported_item_count,
     SPOTIFY_DEVELOPER_QUOTA_MESSAGE,
     SpotifyClient,
     SpotifyQuotaExceededError,
@@ -908,6 +909,8 @@ def main():
                     f'{result.action.title()}: '
                     f'{result.output_name} '
                     f' • {result.items_written} items'
+                    + (f' • {result.unsupported_item_count} unsupported skipped'
+                       if result.unsupported_item_count else "")
                     + (
                         f' • {result.skipped_item_count} local skipped'
                         if result.skipped_item_count
@@ -1024,6 +1027,8 @@ def main():
                 text=(
                     f"Exported {row_count} rows to "
                     f"{destination}"
+                    + (f" • {get_unsupported_item_count(items)} unsupported skipped"
+                       if get_unsupported_item_count(items) else "")
                 )
             )
         except SpotifyRetryLaterError as exc:

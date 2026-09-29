@@ -16,7 +16,7 @@ from playlist_registry import (
     remove_timed_output,
 )
 from shuffle_engine import shuffle_items
-from spotify_client import SpotifyClient
+from spotify_client import SpotifyClient, get_unsupported_item_count
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,7 @@ class RoyalShuffleResult:
     requested_duration_ms: int | None = None
     duration_ms: int | None = None
     source_shorter_than_target: bool = False
+    unsupported_item_count: int = 0
 
 
 class SessionLengthError(ValueError):
@@ -122,6 +123,9 @@ def royal_shuffle(
     report_status("Reading source playlist...")
 
     items = spotify.get_playlist_items(source_playlist_id)
+    unsupported_item_count = get_unsupported_item_count(items)
+    if unsupported_item_count:
+        report_status(f"Skipped {unsupported_item_count} unsupported playlist item(s).")
     log_debug(
         f"RoyalShuffle source item count={len(items)}"
     )
@@ -146,6 +150,15 @@ def royal_shuffle(
         )
 
     items = copyable_items
+    if not items:
+        message = (
+            "No eligible tracks remain. Add supported, non-local music tracks "
+            "or choose another source playlist. "
+            f"Skipped {unsupported_item_count} unsupported and {skipped_item_count} local item(s). "
+            "Output playlists and registry were not changed."
+        )
+        report_status(message)
+        raise SessionLengthError(message)
     
     report_status(
         f'Shuffling {len(items)} items...'
@@ -161,6 +174,7 @@ def royal_shuffle(
         items = separate_artists(items)
         _validate_artist_separation(selected_occurrences, items)
     duration_result = dict(
+        unsupported_item_count=unsupported_item_count,
         requested_duration_ms=target_ms,
         duration_ms=duration_ms,
         source_shorter_than_target=target_ms is not None and duration_ms < target_ms,
@@ -371,6 +385,8 @@ def main():
             f'{result.skipped_item_count} local Spotify items '
             "were skipped because they cannot be copied."
         )
+    if result.unsupported_item_count:
+        print(f"Skipped {result.unsupported_item_count} unsupported playlist item(s).")
 
     print()
     print("Leave Spotify Shuffle OFF when playing it.")

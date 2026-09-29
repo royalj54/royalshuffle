@@ -47,6 +47,7 @@ from session_service import (
     restore_spotify_client,
 )
 from spotify_client import (
+    get_unsupported_item_count,
     SpotifyQuotaExceededError,
     SpotifyRetryLaterError,
 )
@@ -213,6 +214,8 @@ def shuffle_playlist(reference, output):
         file=output,
     )
     print(f"Output playlist ID: {result.output_id}", file=output)
+    if result.unsupported_item_count:
+        print(f"Skipped {result.unsupported_item_count} unsupported playlist item(s).", file=output)
     return EXIT_SUCCESS
 
 
@@ -248,6 +251,8 @@ def export_playlist(reference, explicit_output, output):
     print("CSV export complete.", file=output)
     print(f'Source: {source["name"]}', file=output)
     print(f"Rows exported: {row_count}", file=output)
+    if get_unsupported_item_count(items):
+        print(f"Skipped {get_unsupported_item_count(items)} unsupported playlist item(s).", file=output)
     print(f"CSV path: {destination.resolve()}", file=output)
     return EXIT_SUCCESS
 
