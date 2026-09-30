@@ -24,7 +24,7 @@ from spotify_client import (
     SpotifyQuotaExceededError,
     SpotifyRetryLaterError,
 )
-from app_metadata import APP_VERSION, MANAGED_PLAYLIST_DESCRIPTION
+from app_metadata import APP_VERSION, MANAGED_PLAYLIST_DESCRIPTION, LEGACY_MANAGED_PLAYLIST_DESCRIPTION
 from playlist_export import export_playlist_csv, safe_csv_filename
 from playlist_service import eligible_source_playlists
 from playlist_import import (
@@ -433,7 +433,7 @@ def review_legacy_playlists(playlists, parent):
         if playlist["id"] not in managed_playlist_ids
         and playlist["id"] not in reviewed_playlist_ids
         and playlist.get("description")
-        == MANAGED_PLAYLIST_DESCRIPTION
+        in (MANAGED_PLAYLIST_DESCRIPTION, LEGACY_MANAGED_PLAYLIST_DESCRIPTION)
     ]
 
     for playlist in candidates:

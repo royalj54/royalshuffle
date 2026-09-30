@@ -28,6 +28,15 @@ class SessionLengthTests(unittest.TestCase):
         self.spotify.find_playlists_by_name.return_value = []
         self.source = {"id": "source", "name": "Source"}
 
+    def test_all_new_output_modes_use_current_managed_description(self):
+        self.spotify.get_playlist_items.return_value = [item(1000)]
+        for minutes in (None, 60, 240):
+            with self.subTest(minutes=minutes):
+                self.spotify.create_playlist.return_value = {"id": f"output-{minutes}"}
+                royal_shuffle(self.spotify, self.source, session_minutes=minutes)
+                self.assertEqual(self.spotify.create_playlist.call_args.kwargs["description"],
+                                 "Randomized by RoyalShuffle | Spotify Companion")
+
     def test_targets_equality_crossing_short_first_long_and_duplicates(self):
         cases = [(30, [900000, 900000, 1], 2),
                  (60, [2000000, 2000000, 1], 2),
