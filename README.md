@@ -8,7 +8,7 @@ release tracks.
 
 | Platform | Status | Get started |
 | --- | --- | --- |
-| **Windows** | **Stable — 0.4.2** | [Download the installer](https://github.com/royalj54/royalshuffle/releases/tag/windows%2Fv0.4.2) · [Usage and build guide](docs/windows/README.md) |
+| **Windows** | **Release preparation — 0.4.7** | [Usage and build guide](docs/windows/README.md) |
 | **Linux** | **Prerelease — 0.5.0rc2** | [Download RC2](https://github.com/royalj54/royalshuffle/releases/tag/v0.5.0-rc.2) · [CLI guide](docs/linux/README.md) · [Acceptance checklist](docs/native-linux-acceptance.md) |
 | **Android** | **Prototype — 0.2.0 development line** | [Android source and documentation](https://github.com/royalj54/royalshuffle/tree/android/main/android) |
 

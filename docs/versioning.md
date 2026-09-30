@@ -6,11 +6,15 @@ automatically the version of every implementation in the repository.
 
 ## Existing releases
 
-The following published tag names are permanent and remain valid:
+The current Windows release version is **0.4.7**, prepared for acceptance.
+Windows **0.4.6** is the previous accepted/released version. See the
+[Windows guide](windows/README.md) for features and release-build instructions.
+
+The following historical published tag names are permanent and remain valid:
 
 | Platform | Release | Tag |
 | --- | --- | --- |
-| Windows | 0.4.2 stable | `windows/v0.4.2` |
+| Windows | 0.4.2 stable (historical) | `windows/v0.4.2` |
 | Linux | 0.5.0 RC1 | `v0.5.0-rc.1` |
 | Linux | 0.5.0 RC2 | `v0.5.0-rc.2` |
 

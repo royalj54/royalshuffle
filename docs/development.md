@@ -41,8 +41,10 @@ The GitHub Actions matrix runs:
 ## Build surfaces
 
 - Python wheel and source distribution: `python -m build`
-- Windows executable: `python -m PyInstaller --clean --noconfirm RoyalShuffle.spec`
-- Windows installer: compile `installer/RoyalShuffle.iss` with Inno Setup 6
+- Windows executable and installer: `./scripts/build-windows.ps1` from a clean
+  Windows/Core checkout or worktree. The script validates versions, runs
+  PyInstaller and Inno Setup, and copies the verified installer and checksum to
+  `%USERPROFILE%\RoyalShuffle-Releases\<version>\`.
 
 See the [Windows](windows/README.md) and [Linux](linux/README.md) guides for
 platform details.
