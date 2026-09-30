@@ -865,23 +865,13 @@ def main():
 
         default_name = f'{selected_playlist["name"]} - RANDOM'
 
-        output_playlist_name = simpledialog.askstring(
-            "RoyalShuffle",
-            "Name your shuffled playlist:",
-            initialvalue=default_name,
-            parent=root,
-        ) if session_minutes is None else f'{default_name} {session_minutes}M'
-
-        if output_playlist_name is None:
-            return
-
-        output_playlist_name = output_playlist_name.strip()
-
-        if not output_playlist_name:
-            status_label.config(
-                text="Playlist name cannot be empty"
+        def choose_output_name(default_name):
+            return simpledialog.askstring(
+                "RoyalShuffle",
+                "Name your shuffled playlist:",
+                initialvalue=default_name,
+                parent=root,
             )
-            return
 
         royal_shuffle_button.config(
             state="disabled"
@@ -893,16 +883,22 @@ def main():
         root.update_idletasks()
 
         try:
-            session_options = {} if session_minutes is None else {"session_minutes": session_minutes}
+            session_options = ({"output_name_callback": choose_output_name}
+                               if session_minutes is None else {"session_minutes": session_minutes})
             if separate_by_artist:
                 session_options["artist_separation"] = True
             result = royal_shuffle(
                 client_state["client"],
                 selected_playlist,
-                output_playlist_name=output_playlist_name,
+                output_playlist_name=(default_name if session_minutes is None
+                                      else f"{default_name} {session_minutes}M"),
                 status_callback=update_status,
                 **session_options,
             )
+
+            if result is None:
+                status_label.config(text="Royal Shuffle cancelled.")
+                return
 
             status_label.config(
                 text=(

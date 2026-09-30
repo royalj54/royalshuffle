@@ -105,7 +105,9 @@ def royal_shuffle(
     output_playlist_name=None,
     session_minutes=None,
     artist_separation=False,
+    output_name_callback=None,
 ):
+    """Optional creation-name callback returns a name, or None to cancel without writes."""
     def report_status(message):
         if status_callback:
             status_callback(message)
@@ -190,6 +192,7 @@ def royal_shuffle(
                 if target_ms is not None else full_output_id(source_playlist_id))
     output_kind = "timed" if target_ms is not None else "Full Playlist"
     playlist = None
+    stale_full_output_id = None
     if bound_id is not None:
         if bound_id == source_playlist_id:
             log_debug("Managed output equals source playlist; recovery aborted; registry unchanged")
@@ -229,14 +232,16 @@ def royal_shuffle(
                     if target_ms is not None:
                         remove_timed_output(source_playlist_id, session_minutes, bound_id)
                     else:
-                        remove_full_output(source_playlist_id, bound_id)
+                        # Defer removal until creation naming has been accepted.
+                        stale_full_output_id = bound_id
                 except Exception as removal_error:
                     log_debug(
                         f"Stale binding removal failed; playlist_id={bound_id}; "
                         f"exception_type={type(removal_error).__name__}; replacement not created"
                     )
                     raise
-                log_debug(f"Stale binding removed; playlist_id={bound_id}; preparing replacement")
+                if target_ms is not None:
+                    log_debug(f"Stale binding removed; playlist_id={bound_id}; preparing replacement")
             else:
                 if (not isinstance(playlist, dict) or playlist.get("id") != bound_id
                         or not isinstance(playlist.get("name"), str)):
@@ -253,6 +258,23 @@ def royal_shuffle(
     if playlist:
         output_playlist_id = playlist["id"]
     else:
+        if target_ms is None and output_name_callback is not None:
+            chosen_name = output_name_callback(output_playlist_name)
+            if chosen_name is None:
+                return None
+            output_playlist_name = chosen_name.strip()
+            if not output_playlist_name:
+                raise SessionLengthError("Playlist name cannot be empty")
+        if stale_full_output_id is not None:
+            try:
+                remove_full_output(source_playlist_id, stale_full_output_id)
+            except Exception as removal_error:
+                log_debug(
+                    f"Stale binding removal failed; playlist_id={stale_full_output_id}; "
+                    f"exception_type={type(removal_error).__name__}; replacement not created"
+                )
+                raise
+            log_debug(f"Stale binding removed; playlist_id={stale_full_output_id}; preparing replacement")
         playlist = spotify.create_playlist(
             name=output_playlist_name,
             description=(

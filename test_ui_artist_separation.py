@@ -52,6 +52,10 @@ class ArtistSeparationUiTests(unittest.TestCase):
             self.highlight = (0,)
             return "Output"
         ask.side_effect = during_dialog
+        def create(*args, **kwargs):
+            name = kwargs["output_name_callback"](kwargs["output_playlist_name"])
+            return RoyalShuffleResult("Zulu", "z", name, "out", 1, 1, 0, "created")
+        shuffle.side_effect = create
         self.shuffle.invoke()
         self.assertTrue(shuffle.call_args.kwargs["artist_separation"])
         self.assertNotIn("session_minutes", shuffle.call_args.kwargs)

@@ -42,9 +42,15 @@ class SessionLengthUiTests(unittest.TestCase):
         ask.side_effect = lambda *args, **kwargs: (
             setattr(self.session_variable.get, "return_value", "60M") or "Edited Full name"
         )
+        chosen = []
+        def create(*args, **kwargs):
+            chosen.append(kwargs["output_name_callback"](kwargs["output_playlist_name"]))
+            return RoyalShuffleResult("Zulu", "z", chosen[-1], "out", 1, 1, 0, "created")
+        shuffle.side_effect = create
         self.shuffle.invoke()
         self.assertNotIn("session_minutes", shuffle.call_args.kwargs)
-        self.assertEqual(shuffle.call_args.kwargs["output_playlist_name"], "Edited Full name")
+        self.assertEqual(chosen, ["Edited Full name"])
+        ask.assert_called_once()
 
     @patch("ui.royal_shuffle")
     def test_hidden_commit_guard_and_reappearance(self, shuffle):
