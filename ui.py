@@ -883,8 +883,9 @@ def main():
         root.update_idletasks()
 
         try:
-            session_options = ({"output_name_callback": choose_output_name}
-                               if session_minutes is None else {"session_minutes": session_minutes})
+            session_options = {"output_name_callback": choose_output_name}
+            if session_minutes is not None:
+                session_options["session_minutes"] = session_minutes
             if separate_by_artist:
                 session_options["artist_separation"] = True
             result = royal_shuffle(

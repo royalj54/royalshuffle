@@ -123,12 +123,13 @@ class FullCreationNamingUiTests(unittest.TestCase):
                 self.assert_no_output_writes()
                 self.assertEqual(self.registry_path.read_bytes(), before)
 
-    @patch("ui.simpledialog.askstring")
-    def test_timed_preset_omits_full_naming_prompt(self, ask):
+    @patch("ui.simpledialog.askstring", return_value="Timed custom name")
+    def test_timed_preset_prompts_on_creation(self, ask):
         self.session_variable.get.return_value = "60M"
         self.shuffle.invoke()
-        ask.assert_not_called()
-        self.assertEqual(self.client.create_playlist.call_args.kwargs["name"], "Zulu - RANDOM 60M")
+        ask.assert_called_once()
+        self.assertEqual(ask.call_args.kwargs["initialvalue"], "Zulu - RANDOM 60M")
+        self.assertEqual(self.client.create_playlist.call_args.kwargs["name"], "Timed custom name")
         self.assertEqual(registry.timed_output_id("z", 60), "new")
 
     def test_default_core_cli_call_creates_without_callback(self):
@@ -136,9 +137,73 @@ class FullCreationNamingUiTests(unittest.TestCase):
         self.assertEqual(result.output_name, "Zulu - RANDOM")
         self.assertEqual(registry.full_output_id("z"), result.output_id)
 
-    def test_timed_core_ignores_creation_name_callback(self):
-        callback = Mock(side_effect=AssertionError("Full naming invoked for timed output"))
+    def test_timed_core_uses_creation_name_callback(self):
+        callback = Mock(return_value="Chosen timed name")
         result = royal_shuffle(self.client, {"id": "z", "name": "Zulu"},
                                session_minutes=240, output_name_callback=callback)
-        callback.assert_not_called()
-        self.assertEqual(result.output_name, "Zulu - RANDOM 240M")
+        callback.assert_called_once_with("Zulu - RANDOM 240M")
+        self.assertEqual(result.output_name, "Chosen timed name")
+
+    @patch("ui.simpledialog.askstring")
+    def test_timed_reuse_and_replacement_naming_for_preset_and_custom(self, ask):
+        for minutes in (60, 240):
+            with self.subTest(minutes=minutes):
+                if minutes == 240:
+                    ask.return_value = "240"
+                    self.session_variable.get.return_value = "Custom..."
+                    self.option_menu.call_args.kwargs["command"]("Custom...")
+                    self.session_variable.get.return_value = "240M"
+                else:
+                    self.session_variable.get.return_value = "60M"
+                ask.reset_mock()
+                registry.register_timed_output("z", minutes, f"old-{minutes}")
+                self.client.reset_mock()
+                self.client.get_playlist.side_effect = None
+                self.client.get_playlists.return_value = [{"id": f"old-{minutes}", "name": "Renamed timed"}]
+                self.shuffle.invoke()
+                ask.assert_not_called()
+                self.client.create_playlist.assert_not_called()
+                self.assertIn("Renamed timed", self.status.config.call_args.kwargs["text"])
+                self.client.reset_mock()
+                self.client.get_playlists.return_value = []
+                self.client.get_playlist.side_effect = response(404).raise_for_status.side_effect
+                before = self.registry_path.read_bytes()
+                for answer in (None, "   "):
+                    ask.return_value = answer
+                    self.shuffle.invoke()
+                    self.assert_no_output_writes()
+                    self.assertEqual(self.registry_path.read_bytes(), before)
+                ask.reset_mock()
+                ask.return_value = " Replacement timed "
+                def create(**kwargs):
+                    self.assertIsNone(registry.timed_output_id("z", minutes))
+                    self.assertEqual(kwargs["name"], "Replacement timed")
+                    return {"id": f"replacement-{minutes}"}
+                self.client.create_playlist.side_effect = create
+                self.shuffle.invoke()
+                ask.assert_called_once()
+                self.assertEqual(ask.call_args.kwargs["initialvalue"], f"Zulu - RANDOM {minutes}M")
+                self.assertEqual(registry.timed_output_id("z", minutes), f"replacement-{minutes}")
+                self.client.create_playlist.side_effect = None
+
+    def test_custom_creation_cancel_blank_and_name_preserve_identity(self):
+        for answer in (None, " ", " Chosen Custom "):
+            with self.subTest(answer=answer):
+                callback = Mock(return_value=answer)
+                if answer == " ":
+                    from royalshuffle import SessionLengthError
+                    with self.assertRaisesRegex(SessionLengthError, "Playlist name cannot be empty"):
+                        royal_shuffle(self.client, {"id": "z", "name": "Zulu"},
+                                      session_minutes=240, output_name_callback=callback)
+                else:
+                    result = royal_shuffle(self.client, {"id": "z", "name": "Zulu"},
+                                           session_minutes=240, output_name_callback=callback)
+                    if answer is None:
+                        self.assertIsNone(result)
+                    else:
+                        self.assertEqual(result.output_name, "Chosen Custom")
+                        self.assertEqual(registry.timed_output_id("z", 240), result.output_id)
+                callback.assert_called_once_with("Zulu - RANDOM 240M")
+                if answer in (None, " "):
+                    self.assert_no_output_writes()
+                    self.assertFalse(self.registry_path.exists())
