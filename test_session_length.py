@@ -99,10 +99,11 @@ class SessionLengthTests(unittest.TestCase):
         self.spotify.add_playlist_items.assert_not_called()
         self.assertIsNone(registry.timed_output_id("source", 30))
 
-    def test_full_keeps_name_resolution_and_does_not_validate_durations(self):
+    def test_full_binds_by_source_and_does_not_validate_durations(self):
         self.spotify.get_playlist_items.return_value = [item(None), item(False)]
         result = royal_shuffle(self.spotify, self.source, output_playlist_name="Custom")
-        self.spotify.find_playlists_by_name.assert_called_once_with("Custom")
+        self.spotify.find_playlists_by_name.assert_not_called()
+        self.assertEqual(registry.full_output_id("source"), result.output_id)
         self.assertIsNone(result.duration_ms)
         self.assertEqual(result.items_written, 2)
         self.assertNotIn("source_outputs", json.loads(self.registry_path.read_text()))

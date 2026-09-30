@@ -57,7 +57,7 @@ class UnsupportedSourceTests(unittest.TestCase):
                         registry_methods = [stack.enter_context(patch("royalshuffle." + name))
                                             for name in ("load_managed_playlist_ids", "timed_output_id",
                                                          "remove_timed_output", "register_timed_output",
-                                                         "add_managed_playlist_id")]
+                                                         "full_output_id", "register_full_output", "remove_full_output")]
                         stack.enter_context(patch("royalshuffle.log_debug"))
                         separate = stack.enter_context(patch("royalshuffle.separate_artists"))
                         client = Mock()
@@ -115,9 +115,9 @@ class UnsupportedSourceTests(unittest.TestCase):
                 client.add_playlist_items.side_effect = lambda _, uris: len(uris)
                 statuses = []
                 with patch("royalshuffle.log_debug"), \
-                     patch("royalshuffle.load_managed_playlist_ids", return_value=set()), \
+                     patch("royalshuffle.full_output_id", return_value=None), \
                      patch("royalshuffle.timed_output_id", return_value=None), \
-                     patch("royalshuffle.add_managed_playlist_id"), \
+                     patch("royalshuffle.register_full_output"), \
                      patch("royalshuffle.register_timed_output"), \
                      patch("royalshuffle.separate_artists", wraps=separate_artists) as separate:
                     result = royal_shuffle(client, {"id": "source", "name": "Source"},

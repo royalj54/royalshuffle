@@ -41,6 +41,16 @@ def _load_registry():
                     or output_id in used_outputs):
                 raise ValueError("Invalid or conflicting RoyalShuffle output bindings.")
             used_outputs.add(output_id)
+    full_outputs = data.get("full_outputs", {})
+    if not isinstance(full_outputs, dict):
+        raise ValueError("Invalid RoyalShuffle Full Playlist bindings.")
+    for source_id, output_id in full_outputs.items():
+        if (not isinstance(source_id, str) or not source_id
+                or not isinstance(output_id, str) or not output_id
+                or output_id == source_id or output_id not in playlist_ids
+                or output_id in used_outputs):
+            raise ValueError("Invalid or conflicting RoyalShuffle Full Playlist bindings.")
+        used_outputs.add(output_id)
     return data
 
 
@@ -67,6 +77,8 @@ def register_timed_output(source_id, minutes, output_id):
             or type(minutes) is not int or minutes <= 0
             or not isinstance(output_id, str) or not output_id or output_id == source_id):
         raise ValueError("Invalid timed output identity.")
+    if output_id in data.get("full_outputs", {}).values():
+        raise ValueError("Output already bound as a Full Playlist output.")
     bindings = data.setdefault("source_outputs", {})
     for bound_source, sessions in bindings.items():
         for session, bound_id in sessions.items():
@@ -77,6 +89,43 @@ def register_timed_output(source_id, minutes, output_id):
         raise ValueError("Source/session already has a different output.")
     sessions[str(minutes)] = output_id
     data["playlist_ids"] = sorted(set(data.get("playlist_ids", [])) | {output_id})
+    _save_registry(data)
+
+
+def full_output_id(source_id):
+    return _load_registry().get("full_outputs", {}).get(source_id)
+
+
+def register_full_output(source_id, output_id):
+    data = _load_registry()
+    if (not isinstance(source_id, str) or not source_id
+            or not isinstance(output_id, str) or not output_id or output_id == source_id):
+        raise ValueError("Invalid Full Playlist output identity.")
+    bindings = data.setdefault("full_outputs", {})
+    if any(bound_id == output_id and bound_source != source_id
+           for bound_source, bound_id in bindings.items()):
+        raise ValueError("Output already bound to another Full Playlist source.")
+    if any(output_id in sessions.values() for sessions in data.get("source_outputs", {}).values()):
+        raise ValueError("Output already bound to a timed session.")
+    if source_id in bindings and bindings[source_id] != output_id:
+        raise ValueError("Source already has a different Full Playlist output.")
+    bindings[source_id] = output_id
+    data["playlist_ids"] = sorted(set(data.get("playlist_ids", [])) | {output_id})
+    _save_registry(data)
+
+
+def remove_full_output(source_id, expected_output_id):
+    """Remove only the Full Playlist association that was checked."""
+    data = _load_registry()
+    bindings = data.get("full_outputs", {})
+    if bindings.get(source_id) != expected_output_id or source_id not in bindings:
+        raise ValueError("Managed Full Playlist binding changed; recovery stopped.")
+    del bindings[source_id]
+    if (expected_output_id not in bindings.values()
+            and not any(expected_output_id in sessions.values()
+                        for sessions in data.get("source_outputs", {}).values())):
+        data["playlist_ids"] = [playlist_id for playlist_id in data.get("playlist_ids", [])
+                                if playlist_id != expected_output_id]
     _save_registry(data)
 
 
@@ -104,7 +153,8 @@ def remove_timed_output(source_id, minutes, expected_output_id):
     del sessions[str(minutes)]
     if not sessions:
         del bindings[source_id]
-    if not any(expected_output_id in other.values() for other in bindings.values()):
+    if (not any(expected_output_id in other.values() for other in bindings.values())
+            and expected_output_id not in data.get("full_outputs", {}).values()):
         data["playlist_ids"] = [playlist_id for playlist_id in data.get("playlist_ids", [])
                                 if playlist_id != expected_output_id]
     _save_registry(data)

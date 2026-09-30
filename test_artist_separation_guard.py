@@ -17,7 +17,8 @@ class ArtistSeparationGuardTests(unittest.TestCase):
         for name, value in (
             ("load_managed_playlist_ids", {"existing"}),
             ("timed_output_id", "existing"),
-            ("add_managed_playlist_id", None),
+            ("full_output_id", None),
+            ("register_full_output", None),
             ("register_timed_output", None),
         ):
             patcher = patch("royalshuffle." + name, return_value=value)
@@ -79,6 +80,7 @@ class ArtistSeparationGuardTests(unittest.TestCase):
                     self.spotify.find_playlists_by_name.return_value = (
                         [{"id": "existing", "name": "Output"}] if existing else [])
                     self.registry_calls[1].return_value = "existing" if existing else None
+                    self.registry_calls[2].return_value = "existing" if existing else None
                     items = self.tracks("AAB")
                     message = self.assert_rejected(
                         items, lambda selected: selected,

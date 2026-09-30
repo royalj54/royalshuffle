@@ -9,7 +9,9 @@ from app_metadata import MANAGED_PLAYLIST_DESCRIPTION
 from playlist_selector import select_playlist
 from playlist_service import eligible_source_playlists
 from playlist_registry import (
-    add_managed_playlist_id,
+    full_output_id,
+    register_full_output,
+    remove_full_output,
     load_managed_playlist_ids,
     timed_output_id,
     register_timed_output,
@@ -184,71 +186,67 @@ def royal_shuffle(
         f'Preparing {output_playlist_name}...'
     )
     
-    if target_ms is not None:
-        bound_id = timed_output_id(source_playlist_id, session_minutes)
-        playlist = None
-        if bound_id is not None:
-            if bound_id == source_playlist_id:
-                log_debug("Managed output equals source playlist; recovery aborted; registry unchanged")
-                raise SessionLengthError(
-                    "The registered output is the source playlist. Recovery stopped; "
-                    "the source and registry were not changed."
-                )
-            log_debug(f"Resolving timed managed output; playlist_id={bound_id}; session_minutes={session_minutes}")
+    bound_id = (timed_output_id(source_playlist_id, session_minutes)
+                if target_ms is not None else full_output_id(source_playlist_id))
+    output_kind = "timed" if target_ms is not None else "Full Playlist"
+    playlist = None
+    if bound_id is not None:
+        if bound_id == source_playlist_id:
+            log_debug("Managed output equals source playlist; recovery aborted; registry unchanged")
+            raise SessionLengthError(
+                "The registered output is the source playlist. Recovery stopped; "
+                "the source and registry were not changed."
+            )
+        log_debug(f"Resolving {output_kind} managed output; playlist_id={bound_id}; session_minutes={session_minutes}")
+        try:
+            playlist = next((candidate for candidate in spotify.get_playlists()
+                             if candidate["id"] == bound_id), None)
+        except Exception as exc:
+            log_debug(
+                f"Managed output resolution failed; playlist_id={bound_id}; "
+                f"exception_type={type(exc).__name__}; registry unchanged"
+            )
+            raise
+        if playlist is None:
+            log_debug(
+                f"Managed output absent from playlist listing; playlist_id={bound_id}; "
+                "checking registered ID directly; registry unchanged"
+            )
             try:
-                playlist = next((candidate for candidate in spotify.get_playlists()
-                                 if candidate["id"] == bound_id), None)
+                playlist = spotify.get_playlist(bound_id)
             except Exception as exc:
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if not isinstance(exc, HTTPError) or status != 404:
+                    log_debug(
+                        f"Managed output direct lookup failed; playlist_id={bound_id}; "
+                        f"http_status={status}; exception_type={type(exc).__name__}; registry unchanged"
+                    )
+                    raise
                 log_debug(
-                    f"Managed output resolution failed; playlist_id={bound_id}; "
-                    f"exception_type={type(exc).__name__}; registry unchanged"
-                )
-                raise
-            if playlist is None:
-                log_debug(
-                    f"Managed output absent from playlist listing; playlist_id={bound_id}; "
-                    "checking registered ID directly; registry unchanged"
+                    f"Managed output binding unusable; playlist_id={bound_id}; direct_lookup_http_status=404"
                 )
                 try:
-                    playlist = spotify.get_playlist(bound_id)
-                except Exception as exc:
-                    status = getattr(getattr(exc, "response", None), "status_code", None)
-                    if not isinstance(exc, HTTPError) or status != 404:
-                        log_debug(
-                            f"Managed output direct lookup failed; playlist_id={bound_id}; "
-                            f"http_status={status}; exception_type={type(exc).__name__}; registry unchanged"
-                        )
-                        raise
-                    log_debug(
-                        f"Managed output binding unusable; playlist_id={bound_id}; direct_lookup_http_status=404"
-                    )
-                    try:
+                    if target_ms is not None:
                         remove_timed_output(source_playlist_id, session_minutes, bound_id)
-                    except Exception as removal_error:
-                        log_debug(
-                            f"Stale binding removal failed; playlist_id={bound_id}; "
-                            f"exception_type={type(removal_error).__name__}; replacement not created"
-                        )
-                        raise
-                    log_debug(f"Stale binding removed; playlist_id={bound_id}; preparing replacement")
-                else:
-                    if (not isinstance(playlist, dict) or playlist.get("id") != bound_id
-                            or not isinstance(playlist.get("name"), str)):
-                        raise SessionLengthError(
-                            "Managed output lookup returned an invalid identity or name; "
-                            "recovery stopped and registry unchanged."
-                        )
-            if playlist is not None:
-                log_debug(f"Reusing timed managed output; playlist_id={bound_id}")
-                output_playlist_name = playlist["name"]
-    else:
-        matching_playlists = spotify.find_playlists_by_name(output_playlist_name)
-        managed_playlist_ids = load_managed_playlist_ids()
-        managed_matches = [playlist for playlist in matching_playlists
-                           if playlist["id"] in managed_playlist_ids]
-        if len(managed_matches) > 1:
-            raise ValueError("More than one managed playlist has the requested name.")
-        playlist = managed_matches[0] if managed_matches else None
+                    else:
+                        remove_full_output(source_playlist_id, bound_id)
+                except Exception as removal_error:
+                    log_debug(
+                        f"Stale binding removal failed; playlist_id={bound_id}; "
+                        f"exception_type={type(removal_error).__name__}; replacement not created"
+                    )
+                    raise
+                log_debug(f"Stale binding removed; playlist_id={bound_id}; preparing replacement")
+            else:
+                if (not isinstance(playlist, dict) or playlist.get("id") != bound_id
+                        or not isinstance(playlist.get("name"), str)):
+                    raise SessionLengthError(
+                        "Managed output lookup returned an invalid identity or name; "
+                        "recovery stopped and registry unchanged."
+                    )
+        if playlist is not None:
+            log_debug(f"Reusing {output_kind} managed output; playlist_id={bound_id}")
+            output_playlist_name = playlist["name"]
 
     playlist_action = "updated" if playlist else "created"
 
@@ -266,7 +264,7 @@ def royal_shuffle(
         output_playlist_id = playlist["id"]
         try:
             if target_ms is None:
-                add_managed_playlist_id(output_playlist_id)
+                register_full_output(source_playlist_id, output_playlist_id)
             else:
                 register_timed_output(source_playlist_id, session_minutes, output_playlist_id)
         except Exception as exc:

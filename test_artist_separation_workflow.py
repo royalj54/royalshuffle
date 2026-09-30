@@ -101,7 +101,7 @@ class ArtistSeparationWorkflowTests(unittest.TestCase):
             self.assertEqual(second.output_name, first.output_name)
             self.spotify.create_playlist.assert_not_called()
             self.assertEqual(self.registry_path.read_bytes(), before)
-            self.assertEqual(set(json.loads(before)), {"playlist_ids"} if minutes is None else {"playlist_ids", "source_outputs"})
+            self.assertEqual(set(json.loads(before)), {"playlist_ids", "full_outputs"} if minutes is None else {"playlist_ids", "full_outputs", "source_outputs"})
 
     def test_separated_write_still_registers_first_and_reports_partial_failure(self):
         self.spotify.get_playlist_items.return_value = self.tracks()

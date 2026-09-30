@@ -467,8 +467,8 @@ class SpotifyClientTests(unittest.TestCase):
 
 
 class RoyalShuffleWorkflowTests(unittest.TestCase):
-    @patch("royalshuffle.add_managed_playlist_id")
-    @patch("royalshuffle.load_managed_playlist_ids", return_value=set())
+    @patch("royalshuffle.register_full_output")
+    @patch("royalshuffle.full_output_id", return_value=None)
     @patch("royalshuffle.shuffle_items", side_effect=lambda items: items)
     @patch("royalshuffle.log_debug")
     def test_local_items_are_skipped_before_population(
