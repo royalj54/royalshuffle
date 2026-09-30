@@ -17,11 +17,11 @@ VSVersionInfo(
                     [
                         StringStruct("CompanyName", "RoyalShuffle"),
                         StringStruct("FileDescription", "RoyalShuffle Spotify Playlist Randomizer"),
-                        StringStruct("FileVersion", "0.4.5.0"),
+                        StringStruct("FileVersion", "0.4.6.0"),
                         StringStruct("InternalName", "RoyalShuffle"),
                         StringStruct("OriginalFilename", "RoyalShuffle.exe"),
                         StringStruct("ProductName", "RoyalShuffle"),
-                        StringStruct("ProductVersion", "0.4.5"),
+                        StringStruct("ProductVersion", "0.4.6"),
                     ],
                 )
             ]
