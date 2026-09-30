@@ -34,7 +34,8 @@ def _load_registry():
         if not isinstance(source_id, str) or not source_id or not isinstance(sessions, dict):
             raise ValueError("Invalid RoyalShuffle output bindings.")
         for session, output_id in sessions.items():
-            if (session not in {"30", "60", "90"}
+            if (not isinstance(session, str) or not session.isascii()
+                    or not session.isdecimal() or session.startswith("0")
                     or not isinstance(output_id, str) or not output_id
                     or output_id == source_id or output_id not in playlist_ids
                     or output_id in used_outputs):
@@ -48,6 +49,8 @@ def load_managed_playlist_ids():
 
 
 def timed_output_id(source_id, minutes):
+    if type(minutes) is not int or minutes <= 0:
+        raise ValueError("Choose a positive whole number of minutes.")
     return _load_registry().get("source_outputs", {}).get(source_id, {}).get(str(minutes))
 
 
@@ -61,7 +64,7 @@ def _save_registry(data):
 def register_timed_output(source_id, minutes, output_id):
     data = _load_registry()
     if (not isinstance(source_id, str) or not source_id
-            or type(minutes) is not int or minutes not in (30, 60, 90)
+            or type(minutes) is not int or minutes <= 0
             or not isinstance(output_id, str) or not output_id or output_id == source_id):
         raise ValueError("Invalid timed output identity.")
     bindings = data.setdefault("source_outputs", {})
@@ -91,6 +94,8 @@ def add_managed_playlist_id(playlist_id):
 
 def remove_timed_output(source_id, minutes, expected_output_id):
     """Remove only the association that was checked, preserving other state."""
+    if type(minutes) is not int or minutes <= 0:
+        raise ValueError("Choose a positive whole number of minutes.")
     data = _load_registry()
     bindings = data.get("source_outputs", {})
     sessions = bindings.get(source_id, {})

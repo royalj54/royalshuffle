@@ -73,7 +73,7 @@ class ArtistSeparationGuardTests(unittest.TestCase):
 
     def test_avoidable_adjacency_fails_before_new_or_existing_output_resolution(self):
         for existing in (False, True):
-            for minutes in (None, 30, 60, 90):
+            for minutes in (None, 30, 60, 90, 240):
                 with self.subTest(existing=existing, minutes=minutes):
                     self.spotify.reset_mock()
                     self.spotify.find_playlists_by_name.return_value = (

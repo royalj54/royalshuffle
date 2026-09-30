@@ -17,7 +17,7 @@ class ArtistSeparationWorkflowTests(unittest.TestCase):
                  "primary_artist_id": "A" if index % 3 else "B"} for index in range(12)]
 
     def test_membership_duration_and_pipeline_once_for_every_session_option(self):
-        for minutes in (None, 30, 60, 90):
+        for minutes in (None, 30, 60, 90, 240):
             with self.subTest(minutes=minutes):
                 items = self.tracks()
                 self.spotify.get_playlist_items.return_value = items[::-1]
@@ -48,7 +48,7 @@ class ArtistSeparationWorkflowTests(unittest.TestCase):
                 self.spotify.create_playlist.return_value = {"id": f"next-{minutes}"}
 
     def test_missing_selected_id_fails_before_any_output_lookup_or_mutation(self):
-        for minutes in (None, 30, 60, 90):
+        for minutes in (None, 30, 60, 90, 240):
             with self.subTest(minutes=minutes):
                 self.spotify.reset_mock()
                 items = self.tracks()
@@ -74,7 +74,7 @@ class ArtistSeparationWorkflowTests(unittest.TestCase):
         for item in items:
             item.pop("primary_artist_id")
         self.spotify.get_playlist_items.return_value = items
-        for minutes in (None, 30, 60, 90):
+        for minutes in (None, 30, 60, 90, 240):
             with self.subTest(minutes=minutes), \
                  patch("royalshuffle.shuffle_items", return_value=items), \
                  patch("royalshuffle.separate_artists") as separate:
@@ -87,7 +87,7 @@ class ArtistSeparationWorkflowTests(unittest.TestCase):
     def test_on_off_reuses_existing_full_and_timed_output_ids_without_registry_changes(self):
         items = self.tracks()
         self.spotify.get_playlist_items.return_value = items
-        for minutes in (None, 30, 60, 90):
+        for minutes in (None, 30, 60, 90, 240):
             output_id = f"out-{minutes}"
             self.spotify.create_playlist.return_value = {"id": output_id}
             first = royal_shuffle(self.spotify, self.source, session_minutes=minutes)

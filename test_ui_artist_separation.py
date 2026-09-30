@@ -30,7 +30,7 @@ class ArtistSeparationUiTests(unittest.TestCase):
     @patch("ui.royal_shuffle")
     def test_enabled_for_all_sessions_and_off_omits_option(self, shuffle, ask):
         for enabled in (False, True):
-            for option in ("Full Playlist", "30M", "60M", "90M"):
+            for option in ("Full Playlist", "60M"):
                 self.artist_variable.get.return_value = enabled
                 self.session_variable.get.return_value = option
                 shuffle.return_value = RoyalShuffleResult("Zulu", "z", "Output", "out", 2, 2, 0, "updated",
@@ -48,7 +48,7 @@ class ArtistSeparationUiTests(unittest.TestCase):
         self.artist_variable.get.return_value = True
         def during_dialog(*args, **kwargs):
             self.artist_variable.get.return_value = False
-            self.session_variable.get.return_value = "30M"
+            self.session_variable.get.return_value = "60M"
             self.highlight = (0,)
             return "Output"
         ask.side_effect = during_dialog
@@ -60,7 +60,7 @@ class ArtistSeparationUiTests(unittest.TestCase):
     @patch("ui.royal_shuffle")
     def test_enabled_does_not_bypass_hidden_selection(self, shuffle):
         self.artist_variable.get.return_value = True
-        self.session_variable.get.return_value = "30M"
+        self.session_variable.get.return_value = "60M"
         self.search("alpha")
         self.shuffle.invoke()
         shuffle.assert_not_called()
@@ -74,7 +74,7 @@ class ArtistSeparationUiTests(unittest.TestCase):
     @patch("ui.choose_csv_destination", return_value="output.csv")
     def test_export_ignores_checkbox(self, choose, export):
         self.artist_variable.get.return_value = True
-        self.session_variable.get.return_value = "90M"
+        self.session_variable.get.return_value = "60M"
         self.export.invoke()
         self.client.get_playlist_items.assert_called_once_with("z")
         export.assert_called_once_with("output.csv", self.client.get_playlist_items.return_value)
@@ -83,7 +83,7 @@ class ArtistSeparationUiTests(unittest.TestCase):
         "Missing first-credited Spotify artist ID. Disable Artist Separation to use ordinary True Random."))
     def test_metadata_error_is_actionable_and_actions_recover(self, shuffle):
         self.artist_variable.get.return_value = True
-        self.session_variable.get.return_value = "30M"
+        self.session_variable.get.return_value = "60M"
         self.shuffle.invoke()
         self.assertIn("Disable Artist Separation", self.status.config.call_args.kwargs["text"])
         self.assertEqual(self.shuffle.config.call_args.kwargs["state"], "normal")

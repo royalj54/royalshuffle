@@ -110,9 +110,9 @@ def royal_shuffle(
 
     source_playlist_id = source_playlist["id"]
     if session_minutes is not None and (
-        type(session_minutes) is not int or session_minutes not in (30, 60, 90)
+        type(session_minutes) is not int or session_minutes <= 0
     ):
-        raise SessionLengthError("Choose Full Playlist, 30M, 60M, or 90M.")
+        raise SessionLengthError("Choose Full Playlist or a positive whole number of minutes.")
     target_ms = session_minutes * 60_000 if session_minutes is not None else None
     duration_ms = None
     if target_ms is not None:

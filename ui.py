@@ -853,9 +853,9 @@ def main():
     def handle_royal_shuffle():
         selected_playlist = selected_playlist_state["playlist"]
         separate_by_artist = artist_separation_enabled.get()
-        session_minutes = {"Full Playlist": None, "30M": 30, "60M": 60, "90M": 90}[
-            session_length.get()
-        ]
+        selected_length = session_length.get()
+        session_minutes = (None if selected_length == "Full Playlist" else
+                           60 if selected_length == "60M" else custom_session_minutes)
 
         if not committed_playlist_is_visible():
             status_label.config(
@@ -980,7 +980,41 @@ def main():
     session_frame.pack(pady=5)
     tk.Label(session_frame, text="Session length:").pack(side="left")
     session_length = tk.StringVar(master=root, value="Full Playlist")
-    tk.OptionMenu(session_frame, session_length, "Full Playlist", "30M", "60M", "90M").pack(
+    custom_session_minutes = None
+    previous_session_label = "Full Playlist"
+
+    def choose_session_length(choice):
+        nonlocal custom_session_minutes, previous_session_label
+        if choice != "Custom...":
+            previous_session_label = choice
+            return
+        # Restore the last valid display while the modal input is pending.
+        session_length.set(previous_session_label)
+        initial = str(custom_session_minutes) if custom_session_minutes is not None else ""
+        while True:
+            entered = simpledialog.askstring(
+                "Custom Session Length", "Enter positive whole minutes:",
+                initialvalue=initial, parent=root,
+            )
+            if entered is None:
+                return
+            initial = entered
+            value = entered.strip()
+            try:
+                minutes = int(value) if value.isascii() and value.isdecimal() else 0
+            except ValueError:
+                minutes = 0
+            if minutes > 0:
+                custom_session_minutes = minutes
+                previous_session_label = f"{minutes}M"
+                session_length.set(previous_session_label)
+                return
+            messagebox.showerror(
+                "Custom Session Length", "Enter a positive whole number of minutes.", parent=root,
+            )
+
+    tk.OptionMenu(session_frame, session_length, "Full Playlist", "60M", "Custom...",
+                  command=choose_session_length).pack(
         side="left", padx=8
     )
     artist_separation_enabled = tk.BooleanVar(master=root, value=False)

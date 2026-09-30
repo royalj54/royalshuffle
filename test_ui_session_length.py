@@ -13,12 +13,12 @@ class SessionLengthUiTests(unittest.TestCase):
     def test_default_and_options(self):
         import ui
         self.assertEqual(ui.tk.StringVar.call_args.kwargs["value"], "Full Playlist")
-        self.assertEqual(self.option_menu.call_args.args[2:], ("Full Playlist", "30M", "60M", "90M"))
+        self.assertEqual(self.option_menu.call_args.args[2:], ("Full Playlist", "60M", "Custom..."))
 
     @patch("ui.simpledialog.askstring")
     @patch("ui.royal_shuffle")
     def test_timed_options_use_committed_source_and_report_duration(self, shuffle, ask):
-        for minutes in (30, 60, 90):
+        for minutes in (60,):
             self.client.reset_mock()
             self.saved.reset_mock()
             self.session_variable.get.return_value = f"{minutes}M"
@@ -40,7 +40,7 @@ class SessionLengthUiTests(unittest.TestCase):
     @patch("ui.simpledialog.askstring", return_value="Edited Full name")
     def test_full_name_dialog_and_option_snapshot(self, ask, shuffle):
         ask.side_effect = lambda *args, **kwargs: (
-            setattr(self.session_variable.get, "return_value", "30M") or "Edited Full name"
+            setattr(self.session_variable.get, "return_value", "60M") or "Edited Full name"
         )
         self.shuffle.invoke()
         self.assertNotIn("session_minutes", shuffle.call_args.kwargs)
@@ -60,14 +60,14 @@ class SessionLengthUiTests(unittest.TestCase):
     @patch("ui.export_playlist_csv", return_value=1)
     @patch("ui.choose_csv_destination", return_value="output.csv")
     def test_export_unaffected_by_timed_option(self, choose, export):
-        self.session_variable.get.return_value = "90M"
+        self.session_variable.get.return_value = "60M"
         self.export.invoke()
         self.client.get_playlist_items.assert_called_once_with("z")
         export.assert_called_once_with("output.csv", self.client.get_playlist_items.return_value)
 
     @patch("ui.royal_shuffle")
     def test_actionable_errors_and_orphan_id(self, shuffle):
-        self.session_variable.get.return_value = "30M"
+        self.session_variable.get.return_value = "60M"
         shuffle.side_effect = SessionLengthError("Invalid duration. Full Playlist remains available.")
         self.shuffle.invoke()
         self.assertIn("Full Playlist remains available", self.status.config.call_args.kwargs["text"])

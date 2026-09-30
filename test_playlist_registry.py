@@ -51,7 +51,7 @@ class PlaylistRegistryTests(unittest.TestCase):
 
     def test_malformed_registry_rejected(self):
         for bindings in [[], {"s": []}, {"s": {"30": "unregistered"}},
-                         {"s": {"30": "s"}}, {"s": {"120": "o"}},
+                         {"s": {"30": "s"}}, {"s": {"0": "o"}},
                          {"s": {"30": "o", "60": "o"}},
                          {"s": {"30": "o"}, "t": {"30": "o"}}]:
             with self.subTest(bindings=bindings):

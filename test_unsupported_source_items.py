@@ -44,7 +44,7 @@ class UnsupportedSourceTests(unittest.TestCase):
             "episode": parse([episode()]),
             "local": parse([track(uri="spotify:local:a:b:c:1", is_local=True)]),
         }
-        for minutes in (None, 30, 60, 90):
+        for minutes in (None, 30, 60, 90, 240):
             for existing in (False, True):
                 for label, items in sources.items():
                     with self.subTest(minutes=minutes, existing=existing, source=label), \
