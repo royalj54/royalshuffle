@@ -79,6 +79,38 @@ class SpotifyClientTests(unittest.TestCase):
         self.assertEqual([item["duration_ms"] for item in items], [123456, None])
         self.assertEqual(get.call_count, 2)
         self.assertEqual(get.call_args_list[1].args[0], "next-page")
+        self.assertEqual(get.call_args_list[0].kwargs["params"], {"limit": 50})
+        self.assertEqual(get.call_args_list[1].kwargs["params"], {})
+
+    @patch("spotify_client.log_debug")
+    @patch("spotify_client.requests.get")
+    def test_playlist_pagination_limit_order_filtering_and_duplicates(self, get, _log):
+        def entry(uri, kind="track"):
+            return {"item": {"uri": uri, "type": kind, "duration_ms": 180000}}
+
+        first = [entry(f"spotify:track:{index}") for index in range(50)]
+        second = [entry("spotify:episode:unsupported", "episode"),
+                  entry("spotify:track:0"), {"item": None}, entry("spotify:track:last")]
+        next_url = "https://api.spotify.com/v1/playlists/source/items?offset=50&limit=50"
+        get.side_effect = [
+            response(200, payload={"items": first, "next": next_url}),
+            response(200, payload={"items": second, "next": None}),
+        ]
+
+        items = self.client.get_playlist_items("source")
+
+        self.assertEqual(get.call_count, 2)
+        self.assertEqual(get.call_args_list[0].args[0],
+                         "https://api.spotify.com/v1/playlists/source/items")
+        self.assertEqual(get.call_args_list[0].kwargs["params"], {"limit": 50})
+        self.assertEqual(get.call_args_list[1].args[0], next_url)
+        self.assertEqual(get.call_args_list[1].kwargs["params"], {})
+        self.assertEqual([item["uri"] for item in items],
+                         [f"spotify:track:{index}" for index in range(50)]
+                         + ["spotify:track:0", "spotify:track:last"])
+        self.assertEqual(items.unsupported_item_count, 1)
+        self.assertEqual([item["playlist_position"] for item in items[-2:]], [52, 54])
+        self.assertIsNot(items[0], items[-2])
 
     def setUp(self):
         self.client = SpotifyClient("test-token")

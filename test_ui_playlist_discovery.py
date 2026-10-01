@@ -33,6 +33,7 @@ class PlaylistDiscoveryTests(unittest.TestCase):
         self.client.get_playlists.return_value = self.source
         self.review = patched("review_legacy_playlists")
         patched("load_managed_playlist_ids", return_value={"managed"})
+        patched("load_legacy_opportunity_playlist_ids", return_value=set())
         self.saved = patched("LAST_PLAYLIST_FILE")
         self.saved.exists.return_value = True
         self.saved.read_text.return_value = "z\n"
@@ -42,6 +43,8 @@ class PlaylistDiscoveryTests(unittest.TestCase):
         patched("load_token_data", return_value={"refresh_token": "token"})
         patched("refresh_saved_token_data", return_value={"access_token": "token"})
         self.root = patched("tk.Tk").return_value
+        self.root.winfo_reqwidth.return_value = 500
+        self.root.winfo_reqheight.return_value = 700
         patched("tk.Frame")
         patched("tk.Scrollbar")
         self.labels = []
@@ -67,6 +70,9 @@ class PlaylistDiscoveryTests(unittest.TestCase):
         self.artist_variable_type = patched("tk.BooleanVar")
         self.artist_variable = self.artist_variable_type.return_value
         self.artist_variable.get.return_value = False
+        self.opportunity_variable = Mock()
+        self.opportunity_variable.get.return_value = False
+        self.artist_variable_type.side_effect = [self.opportunity_variable, self.artist_variable]
         self.artist_checkbox = patched("tk.Checkbutton")
         self.listbox_type = patched("tk.Listbox")
         self.listbox = self.listbox_type.return_value

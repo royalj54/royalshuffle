@@ -169,7 +169,7 @@ class SpotifyClient:
         )
 
         params = {
-            "limit": 100
+            "limit": 50
         }
 
         while url:
@@ -449,3 +449,70 @@ class SpotifyClient:
         )
 
         return items_written
+
+    def submit_opportunity_deal(self, evidence, uris, persist_receipt):
+        """Start from replacement, never retry an ambiguous append in place."""
+        from delivery_receipts import expected_writes, payload_digest, validate_delivery
+        validate_delivery(evidence, evidence["operation_id"], evidence["output_id"], uris)
+        if evidence["receipts"]:
+            raise ValueError("A new delivery attempt requires empty receipts.")
+        for index, (method, start, end, batch) in enumerate(expected_writes(uris)):
+            response = self._request(method.lower(),
+                f"https://api.spotify.com/v1/playlists/{evidence['output_id']}/items",
+                f"Opportunity write {index}",
+                headers={**self.headers, "Content-Type": "application/json"}, json={"uris": batch})
+            expected_status = 200 if method == "PUT" else 201
+            data = response.json()
+            snapshot = data.get("snapshot_id") if isinstance(data, dict) else None
+            if response.status_code != expected_status or not isinstance(snapshot, str) or not snapshot.strip():
+                raise ValueError("Spotify write acknowledgment is missing or malformed.")
+            receipt = {"attempt_id": evidence["attempt_id"], "index": index, "method": method, "start": start, "end": end,
+                       "payload_digest": payload_digest(batch), "status": expected_status, "snapshot_id": snapshot}
+            # Persistence failure stops before any subsequent batch.
+            persist_receipt(receipt)
+
+    def get_playlist_items_raw(self, playlist_id):
+        """Unfiltered ordered slots for exact managed-output verification.
+
+        Null, local, and unsupported slots remain represented by None rather
+        than disappearing. Malformed/truncated pagination fails closed.
+        """
+        url = f"https://api.spotify.com/v1/playlists/{playlist_id}/items"
+        params = {"limit": 50}
+        slots, visited = [], set()
+        expected_total = None
+        while url:
+            if url in visited:
+                raise ValueError("Cyclic raw playlist pagination.")
+            visited.add(url)
+            response = self._request("get", url, "raw managed output verification",
+                                     headers=self.headers, params=params)
+            data = response.json()
+            if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+                raise ValueError("Invalid raw playlist page.")
+            total = data.get("total")
+            if type(total) is not int or total < 0:
+                raise ValueError("Raw playlist total is missing or invalid.")
+            if expected_total is None:
+                expected_total = total
+            if total != expected_total:
+                raise ValueError("Raw playlist changed during verification.")
+            for entry in data["items"]:
+                if not isinstance(entry, dict) or "item" not in entry:
+                    raise ValueError("Invalid raw playlist slot.")
+                item = entry["item"]
+                if item is not None and not isinstance(item, dict):
+                    raise ValueError("Invalid raw playlist item.")
+                uri = item.get("uri") if item else None
+                supported = (item and item.get("type") in (None, "track")
+                             and isinstance(uri, str) and uri.startswith("spotify:track:")
+                             and not entry.get("is_local") and not item.get("is_local"))
+                slots.append(uri if supported else None)
+            url = data.get("next")
+            if url is not None and (not isinstance(url, str) or
+                                    not url.startswith("https://api.spotify.com/")):
+                raise ValueError("Invalid raw playlist next URL.")
+            params = {}
+        if len(slots) != expected_total:
+            raise ValueError("Incomplete raw playlist verification.")
+        return slots

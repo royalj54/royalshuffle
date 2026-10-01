@@ -5,6 +5,10 @@ import sys
 import tkinter as tk
 import threading
 import traceback
+import queue
+
+from opportunity_workflow import OpportunityWorkflow
+from opportunity_state import progress
 from artist_separation import ArtistSeparationError
 
 from auth import (
@@ -42,6 +46,7 @@ from playlist_registry import (
     add_managed_playlist_id,
     add_reviewed_legacy_playlist_id,
     load_managed_playlist_ids,
+    load_legacy_opportunity_playlist_ids,
     load_reviewed_legacy_playlist_ids,
 )
 from pathlib import Path
@@ -426,12 +431,14 @@ def create_import_csv_button(parent, command):
 def review_legacy_playlists(playlists, parent):
     managed_playlist_ids = load_managed_playlist_ids()
     reviewed_playlist_ids = load_reviewed_legacy_playlist_ids()
+    completed_opportunity_ids = load_legacy_opportunity_playlist_ids()
 
     candidates = [
         playlist
         for playlist in playlists
         if playlist["id"] not in managed_playlist_ids
         and playlist["id"] not in reviewed_playlist_ids
+        and playlist["id"] not in completed_opportunity_ids
         and playlist.get("description")
         in (MANAGED_PLAYLIST_DESCRIPTION, LEGACY_MANAGED_PLAYLIST_DESCRIPTION)
     ]
@@ -637,6 +644,27 @@ def connect_spotify(
 
     check_for_callback()
 
+def opportunity_status(source):
+    if not source:
+        return "No rotation yet"
+    pending = source["pending"]
+    active = (pending["candidate"] if pending and pending["candidate"] is not None else source["active"])
+    if active is None:
+        return "Recovery required"
+    counts = progress(active)
+    remaining = counts["remaining_unique_count"]
+    total = counts["original_unique_count"]
+    if pending:
+        prefix = f'Session {active["completed_sessions"] + 1} incomplete • Recovery required'
+    elif remaining == 0:
+        prefix = "Rotation complete"
+    elif active["completed_sessions"] == 0:
+        prefix = "Rotation ready"
+    else:
+        prefix = f'Session {active["completed_sessions"]} generated'
+    return f"{prefix} • {remaining} of {total} tracks remaining"
+
+
 def main():
     root = tk.Tk()
     configure_window_icon(root)
@@ -757,6 +785,8 @@ def main():
         )
 
     def refresh_playlist_view(*_args):
+        if opportunity_busy:
+            return
         query = playlist_query.get().casefold()
         visible_playlists[:] = [
             playlist for playlist in eligible_playlists
@@ -790,6 +820,7 @@ def main():
         royal_shuffle_button.config(state=state)
         export_csv_button.config(state=state)
         playlist_search.config(state="normal")
+        refresh_opportunity_controls()
 
     playlist_query.trace_add("write", refresh_playlist_view)
 
@@ -803,6 +834,8 @@ def main():
         root.update_idletasks()
 
     def handle_playlist_selection():
+        if opportunity_busy:
+            return
         selection = playlist_listbox.curselection()
 
         if not selection:
@@ -829,6 +862,7 @@ def main():
         export_csv_button.config(
             state="normal"
         )
+        refresh_opportunity_controls()
 
     playlist_listbox.bind(
         "<Double-Button-1>",
@@ -851,6 +885,11 @@ def main():
     )
 
     def handle_royal_shuffle():
+        if opportunity_busy:
+            return
+        if opportunity_enabled.get():
+            run_opportunity("primary")
+            return
         selected_playlist = selected_playlist_state["playlist"]
         separate_by_artist = artist_separation_enabled.get()
         selected_length = session_length.get()
@@ -973,6 +1012,27 @@ def main():
                 state='normal'
             )
 
+    opportunity_busy = False
+    ordinary_session_label = "Full Playlist"
+    opportunity_enabled = tk.BooleanVar(master=root, value=False)
+
+    def toggle_opportunity():
+        nonlocal ordinary_session_label
+        if opportunity_busy:
+            return
+        if opportunity_enabled.get():
+            ordinary_session_label = session_length.get()
+            session_length.set("60M")
+        else:
+            session_length.set(ordinary_session_label)
+        refresh_opportunity_controls()
+
+    opportunity_checkbox = tk.Checkbutton(
+        root, text="Balanced Opportunity", variable=opportunity_enabled,
+        command=toggle_opportunity,
+    )
+    opportunity_checkbox.pack(pady=5)
+
     session_frame = tk.Frame(root)
     session_frame.pack(pady=5)
     tk.Label(session_frame, text="Session length:").pack(side="left")
@@ -982,6 +1042,9 @@ def main():
 
     def choose_session_length(choice):
         nonlocal custom_session_minutes, previous_session_label
+        if opportunity_enabled.get() or opportunity_busy:
+            session_length.set("60M" if opportunity_enabled.get() else previous_session_label)
+            return
         if choice != "Custom...":
             previous_session_label = choice
             return
@@ -1010,12 +1073,12 @@ def main():
                 "Custom Session Length", "Enter a positive whole number of minutes.", parent=root,
             )
 
-    tk.OptionMenu(session_frame, session_length, "Full Playlist", "60M", "Custom...",
-                  command=choose_session_length).pack(
-        side="left", padx=8
-    )
+    session_menu = tk.OptionMenu(session_frame, session_length, "Full Playlist", "60M", "Custom...",
+                                 command=choose_session_length)
+    session_menu.pack(side="left", padx=8)
     artist_separation_enabled = tk.BooleanVar(master=root, value=False)
-    tk.Checkbutton(root, text="Artist Separation", variable=artist_separation_enabled).pack()
+    artist_checkbox = tk.Checkbutton(root, text="Artist Separation", variable=artist_separation_enabled)
+    artist_checkbox.pack()
 
     royal_shuffle_button = tk.Button(
         root,
@@ -1025,8 +1088,143 @@ def main():
         command=handle_royal_shuffle,
     )
     royal_shuffle_button.pack(pady=10)
+    rotation_label = tk.Label(root, text="No rotation yet", wraplength=460, height=2)
+    rotation_label.pack(pady=5)
+    new_rotation_button = tk.Button(root, text="Start New Rotation", width=20,
+                                    command=lambda: run_opportunity("new"))
+
+    def opportunity_source():
+        playlist = selected_playlist_state["playlist"]
+        if playlist is None:
+            return None
+        return OpportunityWorkflow(client_state["client"]).store.load()["sources"].get(playlist["id"])
+
+    def refresh_opportunity_controls():
+        enabled = opportunity_enabled.get()
+        available = committed_playlist_is_visible() and not opportunity_busy
+        session_menu.config(state="disabled" if enabled or opportunity_busy else "normal")
+        if enabled:
+            rotation_label.pack(pady=5, before=royal_shuffle_button)
+            new_rotation_button.pack(pady=5, before=file_action_frame)
+        else:
+            rotation_label.pack_forget()
+            new_rotation_button.pack_forget()
+        pending = False
+        readable = True
+        if enabled:
+            try:
+                source = opportunity_source()
+                pending = bool(source and source["pending"])
+                rotation_label.config(text=opportunity_status(source))
+            except Exception as exc:
+                readable = False
+                rotation_label.config(text=f"Opportunity state unavailable: {exc}")
+        royal_shuffle_button.config(
+            text=("Resume Pending Session" if pending else "Generate Next Session") if enabled else "Royal Shuffle",
+            state="normal" if available and readable else "disabled",
+        )
+        new_rotation_button.config(state="normal" if available and readable else "disabled")
+
+    def run_opportunity(action):
+        nonlocal opportunity_busy
+        if opportunity_busy or not opportunity_enabled.get() or not committed_playlist_is_visible():
+            return
+        if import_csv_button.cget("state") == "disabled":
+            return
+        playlist = selected_playlist_state["playlist"]
+        workflow = OpportunityWorkflow(client_state["client"])
+        try:
+            source = opportunity_source()
+        except Exception as exc:
+            status_label.config(text=f"Opportunity state unavailable: {exc}")
+            refresh_opportunity_controls()
+            return
+        pending = bool(source and source["pending"])
+        abandon_pending_operation_id = None
+        if action == "new" and pending:
+            if not messagebox.askyesno("Start New Rotation?",
+                    "The pending deal is incomplete. Starting a new rotation will abandon "
+                    "that pending deal and the remaining current rotation.\n\n"
+                    "Any Spotify playlist already created for the incomplete deal will be left untouched. "
+                    "RoyalShuffle will not delete or modify it.\n\n"
+                    "A fresh rotation will be built from the source playlist. Start a new rotation?", parent=root):
+                return
+            abandon_pending_operation_id = source["pending"]["operation_id"]
+        elif action == "new" and source and source["active"] and source["active"]["undealt"]:
+            remaining = len(source["active"]["undealt"])
+            if not messagebox.askyesno("Start New Rotation?",
+                    f"Abandon {remaining} remaining unique track opportunities and start a new rotation?", parent=root):
+                return
+        separate = artist_separation_enabled.get()
+        opportunity_busy = True
+        disabled_controls = [playlist_listbox, playlist_search, connect_button, export_csv_button,
+                             import_csv_button, opportunity_checkbox, artist_checkbox]
+        old_states = [(control, control.cget("state")) for control in disabled_controls]
+        for control, _ in old_states:
+            control.config(state="disabled")
+        refresh_opportunity_controls()
+        status_label.config(text=("Starting new rotation..." if action == "new" else
+                                  "Resuming pending session..." if pending else "Generating Opportunity session..."))
+        messages = queue.Queue()
+
+        def choose_name(default):
+            response = queue.Queue()
+            messages.put(("name", (default, response)))
+            return response.get()
+
+        def worker():
+            try:
+                if pending and action != "new":
+                    result = workflow.resume_pending_session(playlist["id"], output_name_callback=choose_name,
+                                                             source_name=playlist["name"])
+                else:
+                    method = workflow.start_new_rotation if action == "new" else workflow.generate_next_session
+                    options = {"output_name_callback": choose_name, "artist_separation": separate,
+                               "source_name": playlist["name"]}
+                    if abandon_pending_operation_id is not None:
+                        options["abandon_pending_operation_id"] = abandon_pending_operation_id
+                    result = method(playlist["id"], **options)
+                messages.put(("done", result))
+            except Exception as exc:
+                messages.put(("error", exc))
+
+        def poll():
+            nonlocal opportunity_busy
+            try:
+                kind, value = messages.get_nowait()
+            except queue.Empty:
+                root.after(50, poll)
+                return
+            if kind == "name":
+                default, response = value
+                try:
+                    name = simpledialog.askstring("RoyalShuffle", "Name your shuffled playlist:",
+                                                  initialvalue=default, parent=root)
+                    response.put(name.strip() if name is not None else None)
+                except Exception:
+                    response.put(None)
+                root.after(50, poll)
+                return
+            opportunity_busy = False
+            for control, state in old_states:
+                control.config(state=state)
+            if kind == "error":
+                log_debug(f"Opportunity operation failed; exception_type={type(value).__name__}")
+                status_label.config(text=f"Opportunity operation stopped: {value}")
+            else:
+                status_label.config(text=(f"Generated: {value.output_name} • {len(value.uris)} tracks"
+                                          if value is not None else "Opportunity operation cancelled."))
+            refresh_opportunity_controls()
+        try:
+            threading.Thread(target=worker, daemon=True).start()
+        except Exception as exc:
+            messages.put(("error", exc))
+        root.after(50, poll)
+
 
     def handle_export_csv():
+        if opportunity_busy:
+            return
         selected_playlist = selected_playlist_state["playlist"]
 
         if not committed_playlist_is_visible():
@@ -1090,7 +1288,7 @@ def main():
 
     import_csv_button = create_import_csv_button(
         file_action_frame,
-        lambda: import_csv_playlist(
+        lambda: None if opportunity_busy else import_csv_playlist(
             root,
             client_state["client"],
             status_label,
@@ -1159,6 +1357,12 @@ def main():
         try_saved_spotify_session,
     )
 
+    # Reserve the natural space for Opportunity controls even when initially off.
+    rotation_label.pack(pady=5, before=royal_shuffle_button)
+    new_rotation_button.pack(pady=5, before=file_action_frame)
+    root.update_idletasks()
+    root.minsize(max(500, root.winfo_reqwidth()), max(500, root.winfo_reqheight()))
+    refresh_opportunity_controls()
     root.mainloop()
 
 if __name__ == "__main__":

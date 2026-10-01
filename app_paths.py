@@ -173,3 +173,10 @@ def ensure_exports_folder():
 
 def ensure_diagnostics_folder():
     return _ensure_folder(diagnostics_folder)
+
+
+def opportunity_state_file():
+    if _is_windows():
+        return Path.home() / ".royalshuffle_opportunity_state.json"
+
+    return state_folder() / "opportunity_state.json"
