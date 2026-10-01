@@ -83,7 +83,7 @@ class SharedPreferencesPlaylistPreferencesTest {
         assertEquals(0, sharedPreferences.applyCount)
     }
 
-    private class FakeSharedPreferences : SharedPreferences {
+    internal class FakeSharedPreferences : SharedPreferences {
         private val values = mutableMapOf<String, Any?>()
         var commitSucceeds = true
         var commitCount = 0

@@ -16,6 +16,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,6 +38,8 @@ import com.royalshuffle.android.domain.model.Playlist
 import com.royalshuffle.android.output.OutputUiState
 import com.royalshuffle.android.output.OutputViewModel
 import com.royalshuffle.android.output.message
+import com.royalshuffle.android.output.OutputSettings
+import com.royalshuffle.android.output.SessionLengthMode
 import com.royalshuffle.android.playlist.PlaylistUiState
 import com.royalshuffle.android.playlist.PlaylistViewModel
 import com.royalshuffle.android.ui.theme.RoyalShuffleTheme
@@ -48,6 +55,8 @@ fun RoyalShuffleApp(
     val authState by authViewModel.uiState.collectAsState()
     val playlistState by playlistViewModel.uiState.collectAsState()
     val outputState by outputViewModel.uiState.collectAsState()
+    val outputSettings by outputViewModel.settings.collectAsState()
+    val outputRunning by outputViewModel.isRunning.collectAsState()
     val aboutController = remember { AboutDialogController() }
 
     LaunchedEffect(authViewModel) {
@@ -108,7 +117,10 @@ fun RoyalShuffleApp(
                     state = authState,
                     onConnect = authViewModel::connect,
                     onCancel = authViewModel::cancelAuthentication,
-                    onDisconnect = authViewModel::disconnect,
+                    onDisconnect = {
+                        outputViewModel.clear()
+                        authViewModel.disconnect()
+                    },
                 )
                 if (authState == AuthUiState.Connected) {
                     PlaylistControls(
@@ -117,6 +129,11 @@ fun RoyalShuffleApp(
                         onSelect = playlistViewModel::selectPlaylist,
                         outputState = outputState,
                         onCreateOutput = outputViewModel::create,
+                        settings = outputSettings,
+                        outputRunning = outputRunning,
+                        onSessionLength = outputViewModel::setSessionLength,
+                        onCustomMinutes = outputViewModel::setCustomMinutes,
+                        onArtistSeparation = outputViewModel::setArtistSeparation,
                     )
                 }
             }
@@ -145,6 +162,11 @@ private fun ColumnScope.PlaylistControls(
     onSelect: (String) -> Unit,
     outputState: OutputUiState,
     onCreateOutput: (Playlist) -> Unit,
+    settings: OutputSettings,
+    outputRunning: Boolean,
+    onSessionLength: (SessionLengthMode) -> Unit,
+    onCustomMinutes: (String) -> Unit,
+    onArtistSeparation: (Boolean) -> Unit,
 ) {
     when (state) {
         PlaylistUiState.Idle,
@@ -178,21 +200,23 @@ private fun ColumnScope.PlaylistControls(
         }
 
         is PlaylistUiState.Content -> {
+            val keyboardController = LocalSoftwareKeyboardController.current
             val selectedPlaylist = state.playlists.firstOrNull {
                 it.id == state.selectedPlaylistId
             }
-            Text(
-                text = "Choose a playlist",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 24.dp, bottom = 8.dp),
-            )
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
             ) {
+                item {
+                    OutputOptionsControls(settings, onSessionLength, onCustomMinutes, onArtistSeparation)
+                    Text(
+                        text = "Choose a playlist",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
+                    )
+                }
                 items(state.playlists, key = { it.id }) { playlist ->
                     ListItem(
                         headlineContent = { Text(playlist.name) },
@@ -209,16 +233,60 @@ private fun ColumnScope.PlaylistControls(
                 }
             }
             Button(
-                onClick = { selectedPlaylist?.let(onCreateOutput) },
-                enabled = selectedPlaylist != null && outputState !is OutputUiState.Working,
+                onClick = {
+                    keyboardController?.hide()
+                    selectedPlaylist?.let(onCreateOutput)
+                },
+                enabled = selectedPlaylist != null && !outputRunning && settings.validationMessage == null,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 16.dp),
             ) {
                 Text("Create shuffled playlist")
             }
-            OutputStatus(outputState, selectedPlaylist, onCreateOutput)
+            OutputStatus(outputState, selectedPlaylist, onCreateOutput,
+                !outputRunning && settings.validationMessage == null)
         }
+    }
+}
+
+@Composable
+private fun OutputOptionsControls(
+    settings: OutputSettings,
+    onSessionLength: (SessionLengthMode) -> Unit,
+    onCustomMinutes: (String) -> Unit,
+    onArtistSeparation: (Boolean) -> Unit,
+) {
+    Text("Session Length", style = MaterialTheme.typography.titleMedium)
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        SessionLengthMode.entries.forEach { mode ->
+            Row(verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { onSessionLength(mode) }) {
+                RadioButton(selected = settings.mode == mode, onClick = { onSessionLength(mode) })
+                Text(when (mode) {
+                    SessionLengthMode.FULL -> "Full"
+                    SessionLengthMode.SIXTY_MINUTES -> "60M"
+                    SessionLengthMode.CUSTOM -> "Custom"
+                })
+            }
+        }
+    }
+    if (settings.mode == SessionLengthMode.CUSTOM) {
+        OutlinedTextField(
+            value = settings.customMinutes,
+            onValueChange = onCustomMinutes,
+            label = { Text("Minutes") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            isError = settings.validationMessage != null,
+            supportingText = { settings.validationMessage?.let { Text(it) } },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween) {
+        Text("Artist Separation")
+        Switch(checked = settings.artistSeparation, onCheckedChange = onArtistSeparation)
     }
 }
 
@@ -227,6 +295,7 @@ private fun OutputStatus(
     state: OutputUiState,
     selectedPlaylist: Playlist?,
     onCreateOutput: (Playlist) -> Unit,
+    canSubmit: Boolean,
 ) {
     when (state) {
         OutputUiState.Idle -> Unit
@@ -253,7 +322,7 @@ private fun OutputStatus(
             )
             Button(
                 onClick = { selectedPlaylist?.let(onCreateOutput) },
-                enabled = selectedPlaylist != null,
+                enabled = selectedPlaylist != null && canSubmit,
                 modifier = Modifier.padding(top = 8.dp),
             ) {
                 Text("Try again")

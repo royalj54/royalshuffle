@@ -2,6 +2,7 @@ package com.royalshuffle.android.output
 
 import com.royalshuffle.android.data.remote.WebApiFailureCategory
 import com.royalshuffle.android.domain.model.Playlist
+import java.math.BigInteger
 
 data class PlaylistItemsPage(
     val items: List<OutputPlaylistItem>,
@@ -11,6 +12,9 @@ data class PlaylistItemsPage(
 data class OutputPlaylistItem(
     val uri: String?,
     val isLocal: Boolean = false,
+    val durationMs: Long? = null,
+    val primaryArtistId: String? = null,
+    val itemType: String? = null,
 )
 
 interface OutputPlaylistApi {
@@ -25,8 +29,8 @@ interface OutputPlaylistApi {
     suspend fun addItems(playlistId: String, uris: List<String>, accessToken: String)
 }
 
-fun interface UriShuffler {
-    fun shuffle(uris: List<String>): List<String>
+fun interface OccurrenceShuffler {
+    fun shuffle(items: List<OutputPlaylistItem>): List<OutputPlaylistItem>
 }
 
 sealed interface OutputProgress {
@@ -40,6 +44,10 @@ data class OutputResult(
     val playlist: Playlist,
     val itemCount: Int,
     val skippedLocalItemCount: Int,
+    val skippedUnsupportedItemCount: Int = 0,
+    val requestedDurationMs: BigInteger? = null,
+    val durationMs: BigInteger? = null,
+    val sourceShorterThanTarget: Boolean = false,
 )
 
 class OutputPlaylistException(val reason: Reason) : Exception() {

@@ -23,6 +23,6 @@ fun createOutputPlaylistUseCase(
         ),
     ),
     preferences = SharedPreferencesPlaylistPreferences(context),
-    shuffler = UriShuffler { TrueRandomShuffle().shuffle(it) },
+    shuffler = OccurrenceShuffler { TrueRandomShuffle().shuffle(it) },
     diagnostics = DiagnosticLoggerProvider.get(context),
 )

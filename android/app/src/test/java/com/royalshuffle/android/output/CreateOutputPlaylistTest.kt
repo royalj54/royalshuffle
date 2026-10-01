@@ -28,8 +28,8 @@ class CreateOutputPlaylistTest {
         accessTokenProvider = AccessTokenProvider { "access-token" },
         api = api,
         preferences = preferences,
-        shuffler = UriShuffler {
-            shuffledInputs += it
+        shuffler = OccurrenceShuffler {
+            shuffledInputs += it.map { item -> item.uri!! }
             it.reversed()
         },
         diagnostics = DiagnosticLogger { diagnostics += it },
@@ -110,7 +110,7 @@ class CreateOutputPlaylistTest {
 
     @Test
     fun `does not register when playlist creation fails`() = runBlocking {
-        api.singlePage(emptyList())
+        api.singlePage(listOf("spotify:track:one"))
         api.failCreation = true
 
         assertTrue(runCatching { useCase.execute(SOURCE) }.isFailure)

@@ -10,7 +10,7 @@ import com.royalshuffle.android.output.OutputPlaylistItem
 import com.royalshuffle.android.output.OutputUiState
 import com.royalshuffle.android.output.OutputViewModel
 import com.royalshuffle.android.output.PlaylistItemsPage
-import com.royalshuffle.android.output.UriShuffler
+import com.royalshuffle.android.output.OccurrenceShuffler
 import com.royalshuffle.android.playlist.PlaylistApi
 import com.royalshuffle.android.playlist.PlaylistPage
 import com.royalshuffle.android.playlist.PlaylistPreferences
@@ -74,7 +74,7 @@ class SessionStateCoordinationTest {
                 accessTokenProvider = invalidGrantProvider(invalidator),
                 api = SuccessfulOutputApi,
                 preferences = FakePreferences(),
-                shuffler = UriShuffler { it },
+                shuffler = OccurrenceShuffler { it },
             )
             val viewModel = OutputViewModel(useCase)
 
@@ -136,7 +136,7 @@ class SessionStateCoordinationTest {
                     accessTokenProvider = AccessTokenProvider { "token" },
                     api = SuccessfulOutputApi,
                     preferences = preferences,
-                    shuffler = UriShuffler { it },
+                    shuffler = OccurrenceShuffler { it },
                 ),
             )
 
@@ -159,7 +159,7 @@ class SessionStateCoordinationTest {
         accessTokenProvider = AccessTokenProvider { "token" },
         api = api,
         preferences = FakePreferences(),
-        shuffler = UriShuffler { it },
+        shuffler = OccurrenceShuffler { it },
     )
 
     private class FakeSessionInvalidator : SessionInvalidator {

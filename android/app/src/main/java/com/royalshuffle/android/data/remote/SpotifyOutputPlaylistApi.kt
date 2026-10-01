@@ -22,10 +22,15 @@ class SpotifyOutputPlaylistApi(
             for (index in 0 until items.length()) {
                 val playlistItem = items.optJSONObject(index)
                 val item = playlistItem?.optJSONObject("item")
-                val uri = item?.optString("uri")?.takeIf { it.isNotBlank() }
+                val uri = (item?.opt("uri") as? String)?.takeIf { it.isNotBlank() }
                 add(
                     OutputPlaylistItem(
                         uri = uri,
+                        durationMs = positiveIntegerDuration(item?.opt("duration_ms")),
+                        primaryArtistId = item?.optJSONArray("artists")
+                            ?.optJSONObject(0)?.opt("id") as? String,
+                        itemType = if (item == null || item.isNull("type")) null
+                            else (item.opt("type") as? String) ?: "unsupported",
                         isLocal = isLocalPlaylistItem(
                             playlistItemIsLocal = playlistItem?.optBoolean("is_local", false)
                                 ?: false,
@@ -87,6 +92,13 @@ class SpotifyOutputPlaylistApi(
     private companion object {
         val SPOTIFY_ID = Regex("[A-Za-z0-9]+")
     }
+}
+
+// JSONObject's optLong coerces strings/fractions; preserve the integer contract instead.
+internal fun positiveIntegerDuration(value: Any?): Long? = when (value) {
+    is Int -> value.toLong().takeIf { it > 0 }
+    is Long -> value.takeIf { it > 0 }
+    else -> null
 }
 
 internal fun isLocalPlaylistItem(

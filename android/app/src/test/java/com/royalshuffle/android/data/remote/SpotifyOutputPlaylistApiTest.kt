@@ -9,9 +9,60 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class SpotifyOutputPlaylistApiTest {
+    @Test
+    fun `existing item response supplies duration and first artist without extra requests`() = runBlocking {
+        val transport = FakeTransport(WebApiResponse(200, emptyMap(), """{
+            "items": [
+                {"item":{"uri":"spotify:track:group","type":"track","duration_ms":123456,
+                    "artists":[{"id":"BLACKPINK-id","name":"Same name"},{"id":"Lisa-id"}]}},
+                {"item":{"uri":"spotify:track:solo","duration_ms":60000,
+                    "artists":[{"id":"Lisa-id","name":"Same name"}]}},
+                {"item":{"uri":"spotify:episode:podcast","type":"episode","duration_ms":1000}},
+                {"item":{"type":"track","artists":[{"name":"Missing ID"}]}},
+                {"item":null}
+            ], "next":null
+        }"""))
+        val page = SpotifyOutputPlaylistApi(client(transport)).getPlaylistItemsPage(ITEMS_URL, "token")
+        assertEquals(1, transport.attempts)
+        assertEquals(listOf("BLACKPINK-id", "Lisa-id", null, null, null), page.items.map { it.primaryArtistId })
+        assertEquals(listOf(123456L,60000L,1000L,null,null), page.items.map { it.durationMs })
+        assertEquals("episode", page.items[2].itemType)
+        assertNull(page.items[3].uri)
+        assertNull(page.items[4].uri)
+    }
+
+    @Test
+    fun `duration parser does not coerce fractions strings or booleans`() = runBlocking {
+        val transport = FakeTransport(WebApiResponse(200, emptyMap(), """{
+            "items":[
+                {"item":{"uri":"spotify:track:a","duration_ms":1.5}},
+                {"item":{"uri":"spotify:track:b","duration_ms":"60000"}},
+                {"item":{"uri":"spotify:track:c","duration_ms":0}},
+                {"item":{"uri":"spotify:track:d","duration_ms":-1}},
+                {"item":{"uri":"spotify:track:e","duration_ms":true}},
+                {"item":{"uri":"spotify:track:f","duration_ms":9223372036854775807}}
+            ],"next":null
+        }"""))
+        val page = SpotifyOutputPlaylistApi(client(transport)).getPlaylistItemsPage(ITEMS_URL,"token")
+        assertEquals(listOf(null,null,null,null,null,Long.MAX_VALUE), page.items.map { it.durationMs })
+    }
+
+    @Test
+    fun `nonstring URI artist and type cannot be coerced into eligible metadata`() = runBlocking {
+        val transport = FakeTransport(WebApiResponse(200, emptyMap(), """{
+            "items":[{"item":{"uri":12,"type":true,"artists":[{"id":12}]}},
+                {"item":{"uri":"spotify:track:a","artists":[{}, {"id":"second"}]}}],"next":null
+        }"""))
+        val page = SpotifyOutputPlaylistApi(client(transport)).getPlaylistItemsPage(ITEMS_URL,"token")
+        assertNull(page.items[0].uri)
+        assertNull(page.items[0].primaryArtistId)
+        assertEquals("unsupported", page.items[0].itemType)
+        assertNull(page.items[1].primaryArtistId)
+    }
     @Test
     fun `playlist level is_local marks entry local`() {
         assertTrue(

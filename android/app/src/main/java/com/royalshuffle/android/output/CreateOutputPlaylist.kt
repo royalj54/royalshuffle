@@ -9,43 +9,49 @@ import com.royalshuffle.android.diagnostics.NoOpDiagnosticLogger
 import com.royalshuffle.android.diagnostics.recordSafely
 import com.royalshuffle.android.playlist.PlaylistPreferences
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 class CreateOutputPlaylist(
     private val accessTokenProvider: AccessTokenProvider,
     private val api: OutputPlaylistApi,
     private val preferences: PlaylistPreferences,
-    private val shuffler: UriShuffler,
+    shuffler: OccurrenceShuffler,
     private val diagnostics: DiagnosticLogger = NoOpDiagnosticLogger,
+    private val planner: OutputPlanner = OutputPlanner(shuffler),
 ) {
     suspend fun execute(
         source: Playlist,
+        options: OutputOptions = OutputOptions(),
         onProgress: (OutputProgress) -> Unit = {},
     ): OutputResult {
+        options.validate()
         val accessToken = accessTokenProvider.getValidAccessToken()
             ?: throw OutputPlaylistException(OutputPlaylistException.Reason.NOT_AUTHENTICATED)
+        currentCoroutineContext().ensureActive()
 
         onProgress(OutputProgress.LoadingItems)
         val items = loadAllItems(source.id, accessToken)
-        val skippedLocalItemCount = items.count(OutputPlaylistItem::isLocal)
-        val uris = items.mapNotNull { item ->
-            item.uri?.takeIf { it.isNotBlank() && !item.isLocal }
-        }
+        currentCoroutineContext().ensureActive()
+        onProgress(OutputProgress.Shuffling(items.size))
+        val plan = planner.plan(items, options)
+        val skippedLocalItemCount = plan.skippedLocalItemCount
+        val shuffledUris = plan.items.map { it.uri!! }
         diagnostics.recordSafely(
             DiagnosticEvent(
                 eventName = "playlist_items_filtered",
-                intendedItems = uris.size,
-                skippedItems = skippedLocalItemCount,
+                intendedItems = shuffledUris.size,
+                skippedItems = skippedLocalItemCount + plan.skippedUnsupportedItemCount,
             ),
         )
-        onProgress(OutputProgress.Shuffling(uris.size))
-        val shuffledUris = shuffler.shuffle(uris.toList())
-
+        currentCoroutineContext().ensureActive()
         onProgress(OutputProgress.CreatingPlaylist)
         val output = api.createPrivatePlaylist(
-            name = "${source.name} - RANDOM",
+            name = "${source.name} - RANDOM" + (options.sessionMinutes?.let { " ${it}M" } ?: ""),
             description = OUTPUT_DESCRIPTION,
             accessToken = accessToken,
         )
+        currentCoroutineContext().ensureActive()
         if (output.id == source.id) {
             throw OutputPlaylistException(OutputPlaylistException.Reason.SOURCE_OUTPUT_ID_COLLISION)
         }
@@ -61,6 +67,7 @@ class CreateOutputPlaylist(
 
         var added = 0
         shuffledUris.chunked(MAX_BATCH_SIZE).forEachIndexed { batchIndex, batch ->
+            currentCoroutineContext().ensureActive()
             try {
                 api.addItems(output.id, batch, accessToken)
             } catch (error: CancellationException) {
@@ -104,7 +111,10 @@ class CreateOutputPlaylist(
             ),
         )
 
-        return OutputResult(output, shuffledUris.size, skippedLocalItemCount)
+        currentCoroutineContext().ensureActive()
+        return OutputResult(output, shuffledUris.size, skippedLocalItemCount,
+            plan.skippedUnsupportedItemCount, plan.requestedDurationMs, plan.durationMs,
+            plan.sourceShorterThanTarget)
     }
 
     private suspend fun loadAllItems(
