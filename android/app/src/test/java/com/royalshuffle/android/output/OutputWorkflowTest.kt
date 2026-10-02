@@ -24,7 +24,7 @@ class OutputWorkflowTest {
         val token = CompletableDeferred<String>()
         var requests = 0
         val api = TestOutputApi()
-        val viewModel = OutputViewModel(useCase(api, AccessTokenProvider { requests++; token.await() }))
+        val viewModel = autoNamedViewModel(useCase(api, AccessTokenProvider { requests++; token.await() }))
         viewModel.create(SOURCE)
         viewModel.create(SOURCE)
         assertTrue(viewModel.isRunning.value)
@@ -44,7 +44,7 @@ class OutputWorkflowTest {
             items = listOf(track("one", 40_000, "A"), track("two", 40_000, "A"),
                 track("three", 40_000, "B"), track("four", 40_000, "C"))
         }
-        val viewModel = OutputViewModel(useCase(api, AccessTokenProvider { token.await() }))
+        val viewModel = autoNamedViewModel(useCase(api, AccessTokenProvider { token.await() }))
         viewModel.setSessionLength(SessionLengthMode.CUSTOM)
         viewModel.setCustomMinutes("2")
         viewModel.setArtistSeparation(true)
@@ -56,20 +56,20 @@ class OutputWorkflowTest {
         token.complete("token")
         advanceUntilIdle()
         assertEquals(listOf("spotify:track:one", "spotify:track:three", "spotify:track:two"), api.batches.flatten())
-        assertEquals("Source - RANDOM 2M", api.names.single())
+        assertEquals("RND2M-Source", api.names.single())
         val first = viewModel.uiState.value as OutputUiState.Success
         assertEquals(BigInteger.valueOf(120_000), first.requestedDurationMs)
         api.batches.clear()
         viewModel.create(SOURCE)
         advanceUntilIdle()
         assertEquals(4, api.batches.flatten().size)
-        assertEquals("Source - RANDOM", api.names.last())
+        assertEquals("RND-Source", api.names.last())
     }
 
     @Test fun `clear while token is suspended cancels work and permits a fresh operation`() = runTest(dispatcher) {
         val token = CompletableDeferred<String>()
         val api = TestOutputApi()
-        val viewModel = OutputViewModel(useCase(api, AccessTokenProvider { token.await() }))
+        val viewModel = autoNamedViewModel(useCase(api, AccessTokenProvider { token.await() }))
         viewModel.create(SOURCE)
         runCurrent()
         viewModel.clear()
@@ -87,7 +87,7 @@ class OutputWorkflowTest {
     @Test fun `clear before coroutine starts releases gate without token or writes`() = runTest(dispatcher) {
         var tokens = 0
         val api = TestOutputApi()
-        val viewModel = OutputViewModel(useCase(api, AccessTokenProvider { tokens++; "token" }))
+        val viewModel = autoNamedViewModel(useCase(api, AccessTokenProvider { tokens++; "token" }))
         viewModel.create(SOURCE)
         viewModel.clear()
         advanceUntilIdle()
@@ -99,7 +99,7 @@ class OutputWorkflowTest {
     @Test fun `disconnect suppresses noncooperative old loading and prevents overlapping newer operations`() = runTest(dispatcher) {
         val release = CompletableDeferred<Unit>()
         val api = TestOutputApi().apply { pageGate = release }
-        val viewModel = OutputViewModel(useCase(api))
+        val viewModel = autoNamedViewModel(useCase(api))
         viewModel.create(SOURCE)
         runCurrent()
         viewModel.clearForSessionInvalidation()
@@ -113,14 +113,14 @@ class OutputWorkflowTest {
         assertEquals(0, api.createCount)
         viewModel.create(Playlist("newsource", "New"))
         advanceUntilIdle()
-        assertEquals("New - RANDOM", (viewModel.uiState.value as OutputUiState.Success).playlistName)
+        assertEquals("RND-New", (viewModel.uiState.value as OutputUiState.Success).playlistName)
     }
 
     @Test fun `obsolete completion and error after population cannot publish success or failure`() = runTest(dispatcher) {
         for (fail in listOf(false, true)) {
             val release = CompletableDeferred<Unit>()
             val api = TestOutputApi().apply { writeGate = release; failWrite = fail }
-            val viewModel = OutputViewModel(useCase(api))
+            val viewModel = autoNamedViewModel(useCase(api))
             viewModel.create(SOURCE)
             runCurrent()
             assertEquals(1, api.createCount)
@@ -132,14 +132,14 @@ class OutputWorkflowTest {
             api.failWrite = false
             viewModel.create(Playlist("newsource", "New"))
             advanceUntilIdle()
-            assertEquals("New - RANDOM", (viewModel.uiState.value as OutputUiState.Success).playlistName)
+            assertEquals("RND-New", (viewModel.uiState.value as OutputUiState.Success).playlistName)
         }
     }
 
     @Test fun `invalid Custom blocks token acquisition and output mutation with validation state`() = runTest(dispatcher) {
         var tokens = 0
         val api = TestOutputApi()
-        val viewModel = OutputViewModel(useCase(api, AccessTokenProvider { tokens++; "token" }))
+        val viewModel = autoNamedViewModel(useCase(api, AccessTokenProvider { tokens++; "token" }))
         viewModel.setSessionLength(SessionLengthMode.CUSTOM)
         for (value in listOf("", "0", "-1", "1.5")) {
             viewModel.setCustomMinutes(value)
@@ -154,7 +154,7 @@ class OutputWorkflowTest {
 
     @Test fun `Custom draft survives switching modes and settings survive ViewModel recreation`() = runTest(dispatcher) {
         val storage = MemoryOutputSettingsStorage()
-        val first = OutputViewModel(useCase(TestOutputApi()), storage)
+        val first = autoNamedViewModel(useCase(TestOutputApi()), storage)
         assertEquals(OutputSettings(), first.settings.value)
         first.setSessionLength(SessionLengthMode.CUSTOM)
         first.setCustomMinutes("240")
@@ -163,7 +163,7 @@ class OutputWorkflowTest {
         first.setSessionLength(SessionLengthMode.SIXTY_MINUTES)
         first.setSessionLength(SessionLengthMode.CUSTOM)
         assertEquals("240", first.settings.value.customMinutes)
-        assertEquals(first.settings.value, OutputViewModel(useCase(TestOutputApi()), storage).settings.value)
+        assertEquals(first.settings.value, autoNamedViewModel(useCase(TestOutputApi()), storage).settings.value)
     }
 
     @Test fun `all planning validation fails before creation registration and writes`() = runTest(dispatcher) {
@@ -193,7 +193,7 @@ class OutputWorkflowTest {
         val prefs = TestPlaylistPreferences()
         val shuffler = OccurrenceShuffler { it }
         val useCase = CreateOutputPlaylist(AccessTokenProvider { "token" }, api, prefs, shuffler,
-            planner = OutputPlanner(shuffler, separator = { it }))
+            planner = OutputPlanner(shuffler, separator = { it }), registry = TestOutputRegistry(prefs))
         assertTrue(runCatching { useCase.execute(SOURCE, OutputOptions(artistSeparation = true)) }
             .exceptionOrNull() is OutputPlanningException)
         assertEquals(0, api.createCount)
@@ -211,11 +211,14 @@ class OutputWorkflowTest {
         assertTrue(message.contains("shorter than requested"))
     }
 
+    private fun autoNamedViewModel(useCase: CreateOutputPlaylist, storage: OutputSettingsStorage = MemoryOutputSettingsStorage()) =
+        OutputViewModel(useCase, storage, CreationNameProvider { it })
+
     private fun useCase(api: TestOutputApi, tokens: AccessTokenProvider = AccessTokenProvider { "token" },
         preferences: TestPlaylistPreferences = TestPlaylistPreferences()) =
-        CreateOutputPlaylist(tokens, api, preferences, OccurrenceShuffler { it })
+        CreateOutputPlaylist(tokens, api, preferences, OccurrenceShuffler { it }, registry = TestOutputRegistry(preferences))
 
-    private class TestOutputApi : OutputPlaylistApi {
+    private class TestOutputApi : TestUnboundOutputApi {
         var items = listOf(track("one"))
         var createCount = 0
         var pageCount = 0

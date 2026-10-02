@@ -29,6 +29,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import com.royalshuffle.android.output.CreationNameRequest
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -57,6 +65,7 @@ fun RoyalShuffleApp(
     val outputState by outputViewModel.uiState.collectAsState()
     val outputSettings by outputViewModel.settings.collectAsState()
     val outputRunning by outputViewModel.isRunning.collectAsState()
+    val nameRequest by outputViewModel.nameRequest.collectAsState()
     val aboutController = remember { AboutDialogController() }
 
     LaunchedEffect(authViewModel) {
@@ -139,6 +148,11 @@ fun RoyalShuffleApp(
             }
         }
         val recoveryState = playlistState as? PlaylistUiState.Recovery
+        nameRequest?.let { request ->
+            OutputNameDialog(request,
+                onConfirm = { outputViewModel.confirmName(request.requestId, it) },
+                onCancel = { outputViewModel.cancelName(request.requestId) })
+        }
         if (recoveryState != null) {
             RecoveryDialog(
                 state = recoveryState,
@@ -242,12 +256,36 @@ private fun ColumnScope.PlaylistControls(
                     .fillMaxWidth()
                     .padding(top = 16.dp),
             ) {
-                Text("Create shuffled playlist")
+                Text("Generate shuffled playlist")
             }
             OutputStatus(outputState, selectedPlaylist, onCreateOutput,
                 !outputRunning && settings.validationMessage == null)
         }
     }
+}
+
+@Composable
+private fun OutputNameDialog(request: CreationNameRequest, onConfirm: (String) -> Unit, onCancel: () -> Unit) {
+    val focusRequester = remember(request.requestId) { FocusRequester() }
+    var name by rememberSaveable(request.requestId, stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(request.defaultName, TextRange(0, request.defaultName.length)))
+    }
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Name new playlist") },
+        text = {
+            OutlinedTextField(
+                value = name, onValueChange = { name = it }, singleLine = true,
+                label = { Text("Playlist name") },
+                isError = request.errorMessage != null,
+                supportingText = { request.errorMessage?.let { Text(it) } },
+                modifier = Modifier.focusRequester(focusRequester),
+            )
+            LaunchedEffect(request.requestId) { focusRequester.requestFocus() }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(name.text) }) { Text("Create") } },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
+    )
 }
 
 @Composable

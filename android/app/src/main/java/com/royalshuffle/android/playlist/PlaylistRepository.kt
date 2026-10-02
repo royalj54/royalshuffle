@@ -45,7 +45,8 @@ class PlaylistRepository(
         val candidates = playlists.filter {
             it.id !in managedIds &&
                 it.id !in declinedIds &&
-                it.description == CreateOutputPlaylist.OUTPUT_DESCRIPTION
+                it.description in setOf(CreateOutputPlaylist.OUTPUT_DESCRIPTION,
+                    CreateOutputPlaylist.LEGACY_OUTPUT_DESCRIPTION)
         }
         diagnostics.recordSafely(
             DiagnosticEvent(

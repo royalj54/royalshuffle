@@ -19,8 +19,8 @@ class SpotifyPlaylistApi(
                 val playlists = buildList {
                     for (index in 0 until items.length()) {
                         val item = items.optJSONObject(index) ?: continue
-                        val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
-                        val name = item.optString("name").takeIf { it.isNotBlank() } ?: continue
+                        val id = (item.opt("id") as? String)?.takeIf { it.isNotBlank() } ?: continue
+                        val name = (item.opt("name") as? String)?.takeIf { it.isNotBlank() } ?: continue
                         val description = if (item.isNull("description")) {
                             null
                         } else {

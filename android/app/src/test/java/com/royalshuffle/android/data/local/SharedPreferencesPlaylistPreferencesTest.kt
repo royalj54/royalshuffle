@@ -86,6 +86,7 @@ class SharedPreferencesPlaylistPreferencesTest {
     internal class FakeSharedPreferences : SharedPreferences {
         private val values = mutableMapOf<String, Any?>()
         var commitSucceeds = true
+        var persistOnFailedCommit = false
         var commitCount = 0
         var applyCount = 0
 
@@ -128,7 +129,7 @@ class SharedPreferencesPlaylistPreferencesTest {
             override fun clear(): SharedPreferences.Editor = apply { clearRequested = true }
             override fun commit(): Boolean {
                 commitCount += 1
-                if (commitSucceeds) persist()
+                if (commitSucceeds || persistOnFailedCommit) persist()
                 return commitSucceeds
             }
             override fun apply() {

@@ -10,6 +10,41 @@ import org.json.JSONObject
 class SpotifyOutputPlaylistApi(
     private val webApi: SpotifyWebApiClient = SpotifyWebApiClient(),
 ) : OutputPlaylistApi {
+    override suspend fun isPlaylistSaved(playlistId: String, accessToken: String): Boolean {
+        require(playlistId.matches(SPOTIFY_ID))
+        return webApi.requestJsonArray(
+            WebApiRequest("GET", "https://api.spotify.com/v1/me/library/contains?uris=spotify%3Aplaylist%3A$playlistId", accessToken),
+            WebApiOperation("managed output library membership", WebApiOperationClass.READ),
+        ) { json ->
+            require(json.length() == 1)
+            json.get(0) as Boolean
+        }
+    }
+
+    override suspend fun getPlaylistsPage(url: String, accessToken: String) =
+        SpotifyPlaylistApi(webApi).getPlaylistsPage(url, accessToken)
+
+    override suspend fun getPlaylist(playlistId: String, accessToken: String): Playlist {
+        require(playlistId.matches(SPOTIFY_ID))
+        return webApi.requestJson(
+            WebApiRequest("GET", "https://api.spotify.com/v1/playlists/$playlistId", accessToken),
+            WebApiOperation("managed output lookup", WebApiOperationClass.READ),
+        ) { json ->
+            val id = json.get("id") as String
+            val name = json.get("name") as String
+            require(id == playlistId)
+            Playlist(id, name)
+        }
+    }
+
+    override suspend fun clearItems(playlistId: String, accessToken: String) {
+        require(playlistId.matches(SPOTIFY_ID))
+        webApi.requestJson(
+            WebApiRequest("PUT", "https://api.spotify.com/v1/playlists/$playlistId/items", accessToken,
+                JSONObject().put("uris", JSONArray()).toString()),
+            WebApiOperation("managed output clear", WebApiOperationClass.NON_IDEMPOTENT_WRITE),
+        ) { Unit }
+    }
     override suspend fun getPlaylistItemsPage(
         url: String,
         accessToken: String,

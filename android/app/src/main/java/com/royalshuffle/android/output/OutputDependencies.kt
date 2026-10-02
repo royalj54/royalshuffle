@@ -14,15 +14,19 @@ fun createOutputPlaylistUseCase(
     context: Context,
     accessTokenProvider: AccessTokenProvider,
     sessionInvalidator: SessionInvalidator,
-): CreateOutputPlaylist = CreateOutputPlaylist(
-    accessTokenProvider = accessTokenProvider,
-    api = SpotifyOutputPlaylistApi(
-        SpotifyWebApiClient(
-            diagnostics = DiagnosticLoggerProvider.get(context).asWebApiDiagnostics(),
-            sessionInvalidator = sessionInvalidator,
+): CreateOutputPlaylist {
+    val preferences = SharedPreferencesPlaylistPreferences(context)
+    return CreateOutputPlaylist(
+        accessTokenProvider = accessTokenProvider,
+        api = SpotifyOutputPlaylistApi(
+            SpotifyWebApiClient(
+                diagnostics = DiagnosticLoggerProvider.get(context).asWebApiDiagnostics(),
+                sessionInvalidator = sessionInvalidator,
+            ),
         ),
-    ),
-    preferences = SharedPreferencesPlaylistPreferences(context),
-    shuffler = OccurrenceShuffler { TrueRandomShuffle().shuffle(it) },
-    diagnostics = DiagnosticLoggerProvider.get(context),
-)
+        preferences = preferences,
+        registry = preferences,
+        shuffler = OccurrenceShuffler { TrueRandomShuffle().shuffle(it) },
+        diagnostics = DiagnosticLoggerProvider.get(context),
+    )
+}

@@ -4,6 +4,9 @@ import com.royalshuffle.android.auth.AccessTokenProvider
 import com.royalshuffle.android.auth.SessionInvalidator
 import com.royalshuffle.android.auth.SpotifySessionState
 import com.royalshuffle.android.domain.model.Playlist
+import com.royalshuffle.android.output.TestOutputRegistry
+import com.royalshuffle.android.output.TestUnboundOutputApi
+import com.royalshuffle.android.output.CreationNameProvider
 import com.royalshuffle.android.output.CreateOutputPlaylist
 import com.royalshuffle.android.output.OutputPlaylistApi
 import com.royalshuffle.android.output.OutputPlaylistItem
@@ -70,13 +73,15 @@ class SessionStateCoordinationTest {
     fun `invalid grant during output creation invalidates session and clears stale output`() =
         runTest(dispatcher) {
             val invalidator = FakeSessionInvalidator()
+            val preferences = FakePreferences()
             val useCase = CreateOutputPlaylist(
                 accessTokenProvider = invalidGrantProvider(invalidator),
                 api = SuccessfulOutputApi,
-                preferences = FakePreferences(),
+                preferences = preferences,
                 shuffler = OccurrenceShuffler { it },
+                registry = TestOutputRegistry(preferences),
             )
-            val viewModel = OutputViewModel(useCase)
+            val viewModel = autoNamedViewModel(useCase)
 
             viewModel.create(SOURCE)
             advanceUntilIdle()
@@ -110,14 +115,14 @@ class SessionStateCoordinationTest {
     @Test
     fun `session invalidation clears completed output but preserves partial output`() =
         runTest(dispatcher) {
-            val completed = OutputViewModel(outputUseCase(SuccessfulOutputApi))
+            val completed = autoNamedViewModel(outputUseCase(SuccessfulOutputApi))
             completed.create(SOURCE)
             advanceUntilIdle()
             assertTrue(completed.uiState.value is OutputUiState.Success)
             completed.clearForSessionInvalidation()
             assertEquals(OutputUiState.Idle, completed.uiState.value)
 
-            val partial = OutputViewModel(outputUseCase(AuthenticationFailureOutputApi))
+            val partial = autoNamedViewModel(outputUseCase(AuthenticationFailureOutputApi))
             partial.create(SOURCE)
             advanceUntilIdle()
             val partialState = partial.uiState.value
@@ -131,12 +136,13 @@ class SessionStateCoordinationTest {
         runTest(dispatcher) {
             val preferences = FakePreferences().apply { registrationSucceeds = false }
             SuccessfulOutputApi.addCount = 0
-            val viewModel = OutputViewModel(
+            val viewModel = autoNamedViewModel(
                 CreateOutputPlaylist(
                     accessTokenProvider = AccessTokenProvider { "token" },
                     api = SuccessfulOutputApi,
                     preferences = preferences,
                     shuffler = OccurrenceShuffler { it },
+                registry = TestOutputRegistry(preferences),
                 ),
             )
 
@@ -155,12 +161,19 @@ class SessionStateCoordinationTest {
         null
     }
 
-    private fun outputUseCase(api: OutputPlaylistApi) = CreateOutputPlaylist(
-        accessTokenProvider = AccessTokenProvider { "token" },
-        api = api,
-        preferences = FakePreferences(),
-        shuffler = OccurrenceShuffler { it },
-    )
+    private fun autoNamedViewModel(useCase: CreateOutputPlaylist) =
+        OutputViewModel(useCase, creationNameProvider = CreationNameProvider { it })
+
+    private fun outputUseCase(api: OutputPlaylistApi): CreateOutputPlaylist {
+        val preferences = FakePreferences()
+        return CreateOutputPlaylist(
+            accessTokenProvider = AccessTokenProvider { "token" },
+            api = api,
+            preferences = preferences,
+            shuffler = OccurrenceShuffler { it },
+            registry = TestOutputRegistry(preferences),
+        )
+    }
 
     private class FakeSessionInvalidator : SessionInvalidator {
         private val mutableState = MutableStateFlow(SpotifySessionState.ACTIVE)
@@ -196,7 +209,7 @@ class SessionStateCoordinationTest {
             PlaylistPage(listOf(SOURCE), null)
     }
 
-    private object SuccessfulOutputApi : OutputPlaylistApi {
+    private object SuccessfulOutputApi : TestUnboundOutputApi {
         var addCount = 0
         override suspend fun getPlaylistItemsPage(url: String, accessToken: String) =
             PlaylistItemsPage(listOf(OutputPlaylistItem("spotify:track:one")), null)

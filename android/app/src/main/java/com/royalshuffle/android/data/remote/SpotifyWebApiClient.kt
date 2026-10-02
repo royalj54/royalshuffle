@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import org.json.JSONArray
 
 enum class WebApiFailureCategory {
     AUTHENTICATION,
@@ -93,6 +94,18 @@ class SpotifyWebApiClient(
         request: WebApiRequest,
         operation: WebApiOperation,
         transform: (JSONObject) -> T,
+    ): T = requestPayload(request, operation) { transform(JSONObject(it)) }
+
+    suspend fun <T> requestJsonArray(
+        request: WebApiRequest,
+        operation: WebApiOperation,
+        transform: (JSONArray) -> T,
+    ): T = requestPayload(request, operation) { transform(JSONArray(it)) }
+
+    private suspend fun <T> requestPayload(
+        request: WebApiRequest,
+        operation: WebApiOperation,
+        transform: (String) -> T,
     ): T {
         validateUrl(request.url, operation)
         var retryCount = 0
@@ -164,7 +177,7 @@ class SpotifyWebApiClient(
 
             val json = try {
                 if (response.body.isBlank()) throw IllegalArgumentException("Empty JSON response")
-                JSONObject(response.body)
+                response.body
             } catch (error: Exception) {
                 throw failure(
                     operation,

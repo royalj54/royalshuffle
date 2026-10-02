@@ -33,6 +33,7 @@ class CreateOutputPlaylistTest {
             it.reversed()
         },
         diagnostics = DiagnosticLogger { diagnostics += it },
+        registry = TestOutputRegistry(preferences),
     )
 
     @Test
@@ -46,7 +47,7 @@ class CreateOutputPlaylistTest {
             null,
         )
 
-        useCase.execute(SOURCE)
+        useCase.execute(SOURCE, nameProvider = CreationNameProvider { it })
 
         assertEquals(listOf(INITIAL_URL, SECOND_URL), api.requestedUrls)
         assertEquals(listOf("spotify:track:two", "spotify:track:one"), api.addedUris.flatten())
@@ -57,7 +58,7 @@ class CreateOutputPlaylistTest {
         val uris = (1..205).map { "spotify:track:$it" }
         api.singlePage(uris)
 
-        useCase.execute(SOURCE)
+        useCase.execute(SOURCE, nameProvider = CreationNameProvider { it })
 
         assertEquals(listOf(100, 100, 5), api.addedUris.map(List<String>::size))
         assertEquals(uris.reversed(), api.addedUris.flatten())
@@ -67,7 +68,7 @@ class CreateOutputPlaylistTest {
     fun `registers output ID after creation and before first population call`() = runBlocking {
         api.singlePage(listOf("spotify:track:one"))
 
-        useCase.execute(SOURCE)
+        useCase.execute(SOURCE, nameProvider = CreationNameProvider { it })
 
         assertEquals(listOf("output-id"), preferences.managedIds)
         assertEquals(listOf("create", "register", "add"), events)
@@ -79,12 +80,12 @@ class CreateOutputPlaylistTest {
             api.singlePage(listOf("spotify:track:one"))
             preferences.registrationSucceeds = false
 
-            val error = runCatching { useCase.execute(SOURCE) }.exceptionOrNull()
+            val error = runCatching { useCase.execute(SOURCE, nameProvider = CreationNameProvider { it }) }.exceptionOrNull()
 
             assertTrue(error is ManagedPlaylistRegistrationException)
             error as ManagedPlaylistRegistrationException
             assertEquals("output-id", error.outputPlaylistId)
-            assertEquals("Source - RANDOM", error.outputPlaylistName)
+            assertEquals("RND-Source", error.outputPlaylistName)
             assertEquals(1, api.createCount)
             assertEquals(1, preferences.registrationCount)
             assertTrue(api.addedUris.isEmpty())
@@ -96,7 +97,7 @@ class CreateOutputPlaylistTest {
         api.singlePage(listOf("spotify:track:one"))
         api.createdPlaylist = SOURCE.copy(name = "Unexpected")
 
-        val error = runCatching { useCase.execute(SOURCE) }.exceptionOrNull()
+        val error = runCatching { useCase.execute(SOURCE, nameProvider = CreationNameProvider { it }) }.exceptionOrNull()
 
         assertTrue(error is OutputPlaylistException)
         assertEquals(
@@ -113,7 +114,7 @@ class CreateOutputPlaylistTest {
         api.singlePage(listOf("spotify:track:one"))
         api.failCreation = true
 
-        assertTrue(runCatching { useCase.execute(SOURCE) }.isFailure)
+        assertTrue(runCatching { useCase.execute(SOURCE, nameProvider = CreationNameProvider { it }) }.isFailure)
         assertTrue(preferences.managedIds.isEmpty())
     }
 
@@ -122,7 +123,7 @@ class CreateOutputPlaylistTest {
         api.singlePage((1..205).map { "spotify:track:$it" })
         api.failAddCall = 1
 
-        val error = runCatching { useCase.execute(SOURCE) }.exceptionOrNull()
+        val error = runCatching { useCase.execute(SOURCE, nameProvider = CreationNameProvider { it }) }.exceptionOrNull()
 
         assertPartialFailure(error, confirmed = 0, total = 205)
         assertEquals(listOf("output-id"), preferences.managedIds)
@@ -134,7 +135,7 @@ class CreateOutputPlaylistTest {
         api.singlePage((1..205).map { "spotify:track:$it" })
         api.failAddCall = 2
 
-        val error = runCatching { useCase.execute(SOURCE) }.exceptionOrNull()
+        val error = runCatching { useCase.execute(SOURCE, nameProvider = CreationNameProvider { it }) }.exceptionOrNull()
 
         assertPartialFailure(error, confirmed = 100, total = 205)
         assertEquals(listOf(100), api.addedUris.map(List<String>::size))
@@ -145,7 +146,7 @@ class CreateOutputPlaylistTest {
         api.singlePage((1..205).map { "spotify:track:$it" })
         api.failAddCall = 3
 
-        val error = runCatching { useCase.execute(SOURCE) }.exceptionOrNull()
+        val error = runCatching { useCase.execute(SOURCE, nameProvider = CreationNameProvider { it }) }.exceptionOrNull()
 
         assertPartialFailure(error, confirmed = 200, total = 205)
         assertEquals(listOf(100, 100), api.addedUris.map(List<String>::size))
@@ -155,7 +156,7 @@ class CreateOutputPlaylistTest {
     fun `partial output remains excluded from future source selection`() = runBlocking {
         api.singlePage(listOf("spotify:track:one"))
         api.failAddCall = 1
-        assertTrue(runCatching { useCase.execute(SOURCE) }.isFailure)
+        assertTrue(runCatching { useCase.execute(SOURCE, nameProvider = CreationNameProvider { it }) }.isFailure)
         val playlistApi = object : PlaylistApi {
             override suspend fun getPlaylistsPage(
                 url: String,
@@ -179,7 +180,7 @@ class CreateOutputPlaylistTest {
     @Test
     fun `durable registration is visible through a fresh preferences instance`() = runBlocking {
         api.singlePage(listOf("spotify:track:one"))
-        useCase.execute(SOURCE)
+        useCase.execute(SOURCE, nameProvider = CreationNameProvider { it })
         val freshPreferences = FakePreferences(mutableListOf(), preferences.store)
         val playlistApi = object : PlaylistApi {
             override suspend fun getPlaylistsPage(url: String, accessToken: String) =
@@ -204,7 +205,7 @@ class CreateOutputPlaylistTest {
         api.failAddCall = 1
         api.addFailure = cause
 
-        val error = runCatching { useCase.execute(SOURCE) }.exceptionOrNull()
+        val error = runCatching { useCase.execute(SOURCE, nameProvider = CreationNameProvider { it }) }.exceptionOrNull()
 
         assertTrue(error is PartialPlaylistWriteException)
         error as PartialPlaylistWriteException
@@ -228,7 +229,7 @@ class CreateOutputPlaylistTest {
             api.failAddCall = 2
             api.addFailure = cause
 
-            val error = runCatching { useCase.execute(SOURCE) }.exceptionOrNull()
+            val error = runCatching { useCase.execute(SOURCE, nameProvider = CreationNameProvider { it }) }.exceptionOrNull()
 
             assertTrue(error is PartialPlaylistWriteException)
             error as PartialPlaylistWriteException
@@ -250,7 +251,7 @@ class CreateOutputPlaylistTest {
         api.failAddCall = 1
         api.addFailure = cancellation
 
-        val error = runCatching { useCase.execute(SOURCE) }.exceptionOrNull()
+        val error = runCatching { useCase.execute(SOURCE, nameProvider = CreationNameProvider { it }) }.exceptionOrNull()
 
         assertSame(cancellation, error)
     }
@@ -259,7 +260,7 @@ class CreateOutputPlaylistTest {
     fun `preserves duplicate items`() = runBlocking {
         api.singlePage(listOf("spotify:track:same", "spotify:track:other", "spotify:track:same"))
 
-        useCase.execute(SOURCE)
+        useCase.execute(SOURCE, nameProvider = CreationNameProvider { it })
 
         val added = api.addedUris.flatten()
         assertEquals(3, added.size)
@@ -279,7 +280,7 @@ class CreateOutputPlaylistTest {
             null,
         )
 
-        val result = useCase.execute(SOURCE)
+        val result = useCase.execute(SOURCE, nameProvider = CreationNameProvider { it })!!
 
         val expected = listOf("spotify:track:one", "spotify:track:one")
         assertEquals(listOf(expected), shuffledInputs)
@@ -300,7 +301,7 @@ class CreateOutputPlaylistTest {
         val uris = listOf("spotify:track:same", "spotify:track:other", "spotify:track:same")
         api.singlePage(uris)
 
-        val result = useCase.execute(SOURCE)
+        val result = useCase.execute(SOURCE, nameProvider = CreationNameProvider { it })!!
 
         assertEquals(uris.reversed(), api.addedUris.flatten())
         assertEquals(3, result.itemCount)
@@ -311,7 +312,7 @@ class CreateOutputPlaylistTest {
         assertTrue(error is PartialPlaylistWriteException)
         error as PartialPlaylistWriteException
         assertEquals("output-id", error.outputPlaylistId)
-        assertEquals("Source - RANDOM", error.outputPlaylistName)
+        assertEquals("RND-Source", error.outputPlaylistName)
         assertEquals(confirmed, error.confirmedItemsWritten)
         assertEquals(total, error.totalItemsIntended)
         assertEquals(OutputPlaylistException.Reason.NETWORK, error.underlyingReason)
@@ -319,11 +320,11 @@ class CreateOutputPlaylistTest {
         assertTrue(error.cause is OutputPlaylistException)
     }
 
-    private class FakeOutputApi(private val events: MutableList<String>) : OutputPlaylistApi {
+    private class FakeOutputApi(private val events: MutableList<String>) : TestUnboundOutputApi {
         val pages = mutableMapOf<String, PlaylistItemsPage>()
         val requestedUrls = mutableListOf<String>()
         val addedUris = mutableListOf<List<String>>()
-        var createdPlaylist = Playlist("output-id", "Source - RANDOM")
+        var createdPlaylist = Playlist("output-id", "RND-Source")
         var failCreation = false
         var createCount = 0
         var failAddCall: Int? = null
@@ -344,7 +345,7 @@ class CreateOutputPlaylistTest {
             events += "create"
             createCount += 1
             if (failCreation) error("creation failed")
-            assertEquals("Source - RANDOM", name)
+            assertEquals("RND-Source", name)
             assertEquals(CreateOutputPlaylist.OUTPUT_DESCRIPTION, description)
             return createdPlaylist
         }

@@ -192,6 +192,31 @@ class PlaylistRepositoryTest {
         assertFalse(events.joinToString().contains(CreateOutputPlaylist.OUTPUT_DESCRIPTION))
     }
 
+    @Test
+    fun `legacy and modern descriptions are recovery candidates without name based inference`() = runBlocking {
+        api.singlePage(
+            playlist("legacy","Renamed legacy",CreateOutputPlaylist.LEGACY_OUTPUT_DESCRIPTION),
+            playlist("modern","Renamed modern",CreateOutputPlaylist.OUTPUT_DESCRIPTION),
+            playlist("ordinary","RND-Source"),
+        )
+        val result = repository.loadEligiblePlaylists()
+        assertEquals(setOf("legacy","modern"),result.recoveryCandidates.map { it.id }.toSet())
+        assertEquals(listOf("ordinary"),result.playlists.map { it.id })
+        assertTrue(preferences.managedIds.isEmpty())
+    }
+
+    @Test
+    fun `legacy and modern declined recovery decisions remain eligible without another prompt`() = runBlocking {
+        preferences.declinedIds += setOf("legacy","modern")
+        preferences.selectedId = "legacy"
+        api.singlePage(playlist("legacy",description = CreateOutputPlaylist.LEGACY_OUTPUT_DESCRIPTION),
+            playlist("modern",description = CreateOutputPlaylist.OUTPUT_DESCRIPTION))
+        val result = repository.loadEligiblePlaylists()
+        assertTrue(result.recoveryCandidates.isEmpty())
+        assertEquals(listOf("legacy","modern"),result.playlists.map { it.id })
+        assertEquals("legacy",result.selectedPlaylistId)
+    }
+
     private fun playlist(
         id: String,
         name: String = "Playlist $id",
