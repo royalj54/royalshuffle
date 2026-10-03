@@ -2,6 +2,7 @@ package com.royalshuffle.android.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import com.royalshuffle.android.output.OutputSettings
 import com.royalshuffle.android.output.OutputSettingsStorage
 import com.royalshuffle.android.output.SessionLengthMode
@@ -19,6 +20,7 @@ class SharedPreferencesOutputSettings internal constructor(
         } ?: SessionLengthMode.FULL,
         customMinutes = preferences.getString("custom_minutes", "").orEmpty(),
         artistSeparation = preferences.getBoolean("artist_separation", false),
+        opportunityEnabled = preferences.getBoolean("balanced_opportunity", false),
     )
 
     override fun save(settings: OutputSettings) {
@@ -26,6 +28,11 @@ class SharedPreferencesOutputSettings internal constructor(
             .putString("session_length_mode", settings.mode.name)
             .putString("custom_minutes", settings.customMinutes)
             .putBoolean("artist_separation", settings.artistSeparation)
+            .putBoolean("balanced_opportunity", settings.opportunityEnabled)
             .apply()
+    }
+
+    override fun saveOpportunityEnabled(enabled: Boolean) {
+        preferences.edit { putBoolean("balanced_opportunity", enabled) }
     }
 }

@@ -94,18 +94,25 @@ class SpotifyWebApiClient(
         request: WebApiRequest,
         operation: WebApiOperation,
         transform: (JSONObject) -> T,
-    ): T = requestPayload(request, operation) { transform(JSONObject(it)) }
+    ): T = requestPayload(request, operation) { transform(JSONObject(it.body)) }
 
     suspend fun <T> requestJsonArray(
         request: WebApiRequest,
         operation: WebApiOperation,
         transform: (JSONArray) -> T,
-    ): T = requestPayload(request, operation) { transform(JSONArray(it)) }
+    ): T = requestPayload(request, operation) { transform(JSONArray(it.body)) }
+
+    /** Narrow acknowledgement-aware boundary; ordinary callers retain their accepted contract. */
+    suspend fun <T> requestAcknowledgedJson(request: WebApiRequest, operation: WebApiOperation,
+        expectedStatus: Int, transform: (JSONObject) -> T): T = requestPayload(request, operation) {
+        require(it.statusCode == expectedStatus) { "Unexpected Spotify acknowledgement status." }
+        transform(JSONObject(it.body))
+    }
 
     private suspend fun <T> requestPayload(
         request: WebApiRequest,
         operation: WebApiOperation,
-        transform: (String) -> T,
+        transform: (WebApiResponse) -> T,
     ): T {
         validateUrl(request.url, operation)
         var retryCount = 0
@@ -175,9 +182,8 @@ class SpotifyWebApiClient(
                 )
             }
 
-            val json = try {
+            try {
                 if (response.body.isBlank()) throw IllegalArgumentException("Empty JSON response")
-                response.body
             } catch (error: Exception) {
                 throw failure(
                     operation,
@@ -188,7 +194,7 @@ class SpotifyWebApiClient(
             }
 
             return try {
-                transform(json)
+                transform(response)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: SpotifyWebApiException) {

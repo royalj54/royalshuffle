@@ -11,6 +11,11 @@ import com.royalshuffle.android.output.OrdinaryOutputRegistry
 import com.royalshuffle.android.output.OutputIdentity
 import com.royalshuffle.android.output.OutputRegistryException
 import com.royalshuffle.android.output.validateBindings
+import com.royalshuffle.android.output.ManagedMutationCoordinator
+import com.royalshuffle.android.output.ManagedIdentityProtection
+import com.royalshuffle.android.output.NoOpportunityIdentityProtection
+import com.royalshuffle.android.opportunity.OpportunityIdentityProtection
+import com.royalshuffle.android.opportunity.OpportunityStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.WeakHashMap
@@ -18,6 +23,8 @@ import java.util.WeakHashMap
 class SharedPreferencesPlaylistPreferences internal constructor(
     private val preferences: SharedPreferences,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val coordinator: ManagedMutationCoordinator = ManagedMutationCoordinator.Process,
+    private val identityProtection: ManagedIdentityProtection = NoOpportunityIdentityProtection,
 ) : PlaylistPreferences, OrdinaryOutputRegistry {
     constructor(
         context: Context,
@@ -25,6 +32,8 @@ class SharedPreferencesPlaylistPreferences internal constructor(
     ) : this(
         context.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE),
         ioDispatcher,
+        ManagedMutationCoordinator.Process,
+        OpportunityIdentityProtection(OpportunityStore(AtomicFileOpportunityPersistence(context))),
     )
 
     override fun loadManagedPlaylistIds(): Set<String> = synchronized(MUTATION_LOCK) {
@@ -36,9 +45,10 @@ class SharedPreferencesPlaylistPreferences internal constructor(
         addManagedPlaylistIds(setOf(playlistId))
 
     override suspend fun addManagedPlaylistIds(playlistIds: Set<String>): Boolean =
-        withContext(ioDispatcher) {
+        coordinator.registryMutation { withContext(ioDispatcher) {
             try {
                 synchronized(MUTATION_LOCK) {
+                    playlistIds.forEach(identityProtection::requireOutputAvailable)
                     val updatedIds = loadManagedPlaylistIds() + playlistIds
                     preferences.edit().putStringSet(KEY_MANAGED_PLAYLIST_IDS, updatedIds).commit()
                 }
@@ -47,13 +57,13 @@ class SharedPreferencesPlaylistPreferences internal constructor(
             } catch (_: Exception) {
                 false
             }
-        }
+        } }
 
     override fun loadDeclinedRecoveryPlaylistIds(): Set<String> =
         preferences.getStringSet(KEY_DECLINED_RECOVERY_PLAYLIST_IDS, emptySet()).orEmpty().toSet()
 
     override suspend fun addDeclinedRecoveryPlaylistIds(playlistIds: Set<String>): Boolean =
-        withContext(ioDispatcher) {
+        coordinator.registryMutation { withContext(ioDispatcher) {
             try {
                 synchronized(MUTATION_LOCK) {
                     val updatedIds = loadDeclinedRecoveryPlaylistIds() + playlistIds
@@ -66,7 +76,7 @@ class SharedPreferencesPlaylistPreferences internal constructor(
             } catch (_: Exception) {
                 false
             }
-        }
+        } }
 
     override fun loadSelectedPlaylistId(): String? =
         preferences.getString(KEY_SELECTED_PLAYLIST_ID, null)
@@ -83,6 +93,10 @@ class SharedPreferencesPlaylistPreferences internal constructor(
         loadBindings()[identity]
     }
 
+    override fun sourcePlaylistIds(): Set<String> = synchronized(MUTATION_LOCK) {
+        loadBindings().keys.map { it.sourceId }.toSet()
+    }
+
     override fun requireCurrent(identity: OutputIdentity, expectedOutputId: String?) = synchronized(MUTATION_LOCK) {
         if (loadBindings()[identity] != expectedOutputId) {
             throw OutputRegistryException("Managed output binding changed. Retry after reviewing the current output.")
@@ -90,8 +104,10 @@ class SharedPreferencesPlaylistPreferences internal constructor(
     }
 
     override suspend fun bind(identity: OutputIdentity, outputId: String, expectedOutputId: String?) =
-        withContext(ioDispatcher) {
+        coordinator.registryMutation { withContext(ioDispatcher) {
             synchronized(MUTATION_LOCK) {
+                identityProtection.requireSourceAllowed(identity.sourceId)
+                identityProtection.requireOutputAvailable(outputId)
                 val bindings = loadBindings()
                 if (bindings[identity] != expectedOutputId) {
                     throw OutputRegistryException("Managed output binding changed; the new playlist was not populated.")
@@ -126,7 +142,7 @@ class SharedPreferencesPlaylistPreferences internal constructor(
                     throw OutputRegistryException("Could not durably save the managed output binding. Restart before retrying.", restartRequired = true)
                 }
             }
-        }
+        } }
 
     private fun loadBindings(): Map<OutputIdentity, String> {
         if (failedBindingStores[preferences] == true) {

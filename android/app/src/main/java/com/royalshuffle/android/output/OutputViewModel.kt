@@ -15,6 +15,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineStart
 import java.math.BigInteger
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import com.royalshuffle.android.opportunity.*
+import com.royalshuffle.android.diagnostics.*
+import com.royalshuffle.android.ui.opportunityUiMessage
 
 sealed interface OutputUiState {
     data object Idle : OutputUiState
@@ -37,6 +42,9 @@ class OutputViewModel(
     private val createOutputPlaylist: CreateOutputPlaylist,
     private val settingsStorage: OutputSettingsStorage = MemoryOutputSettingsStorage(),
     private val creationNameProvider: CreationNameProvider? = null,
+    private val opportunityWorkflow: OpportunityWorkflow? = null,
+    initialSourceId: String? = null,
+    private val diagnostics: DiagnosticLogger = NoOpDiagnosticLogger,
 ) : ViewModel() {
     private val mutableUiState = MutableStateFlow<OutputUiState>(OutputUiState.Idle)
     val uiState: StateFlow<OutputUiState> = mutableUiState.asStateFlow()
@@ -49,6 +57,59 @@ class OutputViewModel(
     private val mutableNameRequest = MutableStateFlow<CreationNameRequest?>(null)
     val nameRequest: StateFlow<CreationNameRequest?> = mutableNameRequest.asStateFlow()
     private var pendingName: CompletableDeferred<String?>? = null
+    private val mutableOpportunityState = MutableStateFlow(OpportunityUiState(sourceId = initialSourceId))
+    val opportunityState: StateFlow<OpportunityUiState> = mutableOpportunityState.asStateFlow()
+    private val mutableConfirmationRequest = MutableStateFlow<OpportunityConfirmationRequest?>(null)
+    val confirmationRequest: StateFlow<OpportunityConfirmationRequest?> = mutableConfirmationRequest.asStateFlow()
+    private var pendingConfirmation: CompletableDeferred<Boolean>? = null
+    private var restoration: Job? = null
+    private var restorationGeneration = 0L
+
+    init { selectOpportunitySource(initialSourceId) }
+
+    fun selectOpportunitySource(sourceId: String?) {
+        if (mutableIsRunning.value) return
+        restoration?.cancel()
+        val revision = ++restorationGeneration
+        mutableOpportunityState.value = OpportunityUiState(sourceId = sourceId)
+        restoration = viewModelScope.launch { refreshOpportunity(sourceId, revision) }
+    }
+
+    private suspend fun refreshOpportunity(sourceId: String?, revision: Long = restorationGeneration) {
+        val state = try {
+            val sources = opportunityWorkflow?.inspectSources().orEmpty()
+            val pending = sources.mapNotNull { (id, source) ->
+                source.pending?.let { PendingOpportunitySession(id, it) }
+            }
+            OpportunityUiState(sourceId, sources[sourceId], false, pending.size, pendingSessions = pending)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            recordOpportunityFailure("Opportunity restoration", error)
+            OpportunityUiState(sourceId, isLoading = false, errorMessage = opportunityUiMessage(error))
+        }
+        if (revision == restorationGeneration) mutableOpportunityState.value = state
+    }
+
+    fun confirmNewRotation(requestId: Long) = answerConfirmation(requestId, true)
+    fun cancelNewRotation(requestId: Long) = answerConfirmation(requestId, false)
+
+    private fun answerConfirmation(requestId: Long, confirmed: Boolean) {
+        if (generation != requestId || mutableConfirmationRequest.value?.requestId != requestId) return
+        pendingConfirmation?.complete(confirmed)
+        mutableConfirmationRequest.value = null
+    }
+
+    private suspend fun requestConfirmation(token: OpportunityRotationConfirmation, requestId: Long,
+        abandonOnly: Boolean = false): Boolean {
+        val response = CompletableDeferred<Boolean>()
+        pendingConfirmation = response
+        mutableConfirmationRequest.value = OpportunityConfirmationRequest(requestId, token, abandonOnly)
+        return try { response.await() } finally {
+            if (mutableConfirmationRequest.value?.requestId == requestId) mutableConfirmationRequest.value = null
+            if (pendingConfirmation === response) pendingConfirmation = null
+        }
+    }
 
     fun confirmName(requestId: Long, name: String) {
         val request = mutableNameRequest.value ?: return
@@ -77,9 +138,21 @@ class OutputViewModel(
         }
     }
 
-    fun setSessionLength(mode: SessionLengthMode) = updateSettings(mutableSettings.value.copy(mode = mode))
-    fun setCustomMinutes(value: String) = updateSettings(mutableSettings.value.copy(customMinutes = value))
+    fun setSessionLength(mode: SessionLengthMode) {
+        if (!mutableSettings.value.opportunityEnabled) updateSettings(mutableSettings.value.copy(mode = mode))
+    }
+    fun setCustomMinutes(value: String) {
+        if (!mutableSettings.value.opportunityEnabled) updateSettings(mutableSettings.value.copy(customMinutes = value))
+    }
     fun setArtistSeparation(enabled: Boolean) = updateSettings(mutableSettings.value.copy(artistSeparation = enabled))
+
+    fun setOpportunityEnabled(enabled: Boolean) {
+        if (mutableIsRunning.value) return
+        settingsStorage.saveOpportunityEnabled(enabled)
+        mutableSettings.value = mutableSettings.value.copy(opportunityEnabled = enabled)
+        mutableUiState.value = OutputUiState.Idle
+        selectOpportunitySource(mutableOpportunityState.value.sourceId)
+    }
 
     private fun updateSettings(settings: OutputSettings) {
         settingsStorage.save(settings)
@@ -87,6 +160,133 @@ class OutputViewModel(
     }
 
     fun create(source: Playlist) {
+        if (mutableSettings.value.opportunityEnabled) {
+            createOpportunity(source, false)
+            return
+        }
+        createOrdinary(source)
+    }
+
+    fun startNewRotation(source: Playlist) {
+        if (mutableSettings.value.opportunityEnabled) createOpportunity(source, true)
+    }
+
+    fun resumePendingSession(session: PendingOpportunitySession) = actOnPending(session, false)
+
+    fun abandonPendingSession(session: PendingOpportunitySession) = actOnPending(session, true)
+
+    private fun actOnPending(session: PendingOpportunitySession, abandon: Boolean) {
+        if (mutableIsRunning.value || !mutableSettings.value.opportunityEnabled) return
+        val workflow = opportunityWorkflow ?: return
+        val submittedGeneration = ++generation
+        val selectedSourceId = mutableOpportunityState.value.sourceId
+        restoration?.cancel()
+        ++restorationGeneration
+        mutableIsRunning.value = true
+        mutableUiState.value = OutputUiState.Working("Reading saved pending session…")
+        operation = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                val saved = workflow.inspectSource(session.sourceId)?.pending
+                if (saved?.operationId != session.pending.operationId) {
+                    throw OpportunityPendingException("Pending operation changed.")
+                }
+                if (abandon) {
+                    val token = workflow.inspectNewRotation(session.sourceId)
+                    if (token.pendingOperationId != session.pending.operationId) {
+                        throw OpportunityPendingException("Pending operation changed.")
+                    }
+                    if (requestConfirmation(token, submittedGeneration, abandonOnly = true)) {
+                        workflow.abandonPendingSession(session.sourceId, session.pending.operationId)
+                    }
+                    if (generation == submittedGeneration) mutableUiState.value = OutputUiState.Idle
+                } else {
+                    val names = creationNameProvider ?: CreationNameProvider { requestName(it, submittedGeneration) }
+                    val result = workflow.resumePendingSession(session.sourceId, names, onProgress = {
+                        if (generation == submittedGeneration) mutableUiState.value = OutputUiState.Working(it.message())
+                    }, expectedOperationId = session.pending.operationId)
+                    if (generation == submittedGeneration) mutableUiState.value = if (result == null) OutputUiState.Idle
+                        else OutputUiState.Success(result.output.name, result.uris.size, 0)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                recordOpportunityFailure(if (abandon) "Abandon pending" else "Resume pending", error)
+                if (generation == submittedGeneration) mutableUiState.value = OutputUiState.Error(opportunityUiMessage(error))
+            } finally {
+                withContext(NonCancellable) { refreshOpportunity(selectedSourceId) }
+            }
+        }
+        operation!!.invokeOnCompletion { mutableIsRunning.value = false }
+        operation!!.start()
+    }
+
+    private fun createOpportunity(source: Playlist, startNew: Boolean) {
+        if (mutableIsRunning.value) return
+        val workflow = opportunityWorkflow ?: return
+        val submittedGeneration = ++generation
+        val artistSeparation = mutableSettings.value.artistSeparation
+        restoration?.cancel()
+        ++restorationGeneration
+        mutableIsRunning.value = true
+        mutableUiState.value = OutputUiState.Working("Reading saved Opportunity state…")
+        operation = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                val saved = workflow.inspectSource(source.id)
+                val names = creationNameProvider ?: CreationNameProvider { requestName(it, submittedGeneration) }
+                val progress: (OpportunityWorkflowProgress) -> Unit = {
+                    if (generation == submittedGeneration) mutableUiState.value = OutputUiState.Working(it.message())
+                }
+                val result = if (startNew) {
+                    val token = workflow.inspectNewRotation(source.id)
+                    val needsConfirmation = token.pendingOperationId != null ||
+                        (token.activeRotationId != null && token.remainingUniqueCount > 0)
+                    if (needsConfirmation && !requestConfirmation(token, submittedGeneration)) null
+                    else workflow.startNewRotation(source, names, token, artistSeparation, progress)
+                } else if (saved?.pending != null) {
+                    workflow.resumePendingSession(source.id, names, progress)
+                } else workflow.generateNextSession(source, names, artistSeparation, progress)
+                if (generation == submittedGeneration) mutableUiState.value = if (result == null) OutputUiState.Idle
+                else OutputUiState.Success(result.output.name, result.uris.size, 0)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                recordOpportunityFailure(if (startNew) "New rotation" else "Generate or resume", error)
+                if (generation == submittedGeneration) mutableUiState.value = OutputUiState.Error(opportunityUiMessage(error))
+            } finally {
+                // Auth cancellation cannot discard durable progress or release the gate before local refresh.
+                withContext(NonCancellable) { refreshOpportunity(source.id) }
+            }
+        }
+        operation!!.invokeOnCompletion { mutableIsRunning.value = false }
+        operation!!.start()
+    }
+
+    private fun recordOpportunityFailure(operationName: String, error: Throwable) {
+        diagnostics.recordSafely(DiagnosticEvent(eventName = "opportunity_ui_failed", operationName = operationName,
+            failureCategory = when (error) {
+                is com.royalshuffle.android.data.remote.SpotifyWebApiException -> error.category.name
+                is OpportunityUnknownCreationException -> "UNRESOLVED_CREATION"
+                is OpportunityPendingException -> "RECOVERY_OR_CONFIRMATION"
+                is OpportunityStateException -> when {
+                    error.message?.contains("restart", ignoreCase = true) == true -> "DURABLE_STATE_WRITE"
+                    error.message?.contains("Cannot read") == true -> "DURABLE_STATE_READ"
+                    else -> "DURABLE_STATE"
+                }
+                else -> "OTHER"
+            }, exceptionClass = error.javaClass.simpleName))
+    }
+
+    private fun OpportunityWorkflowProgress.message(): String = when (this) {
+        OpportunityWorkflowProgress.LoadingSource -> "Loading current source…"
+        OpportunityWorkflowProgress.ChoosingName -> "Choose a Deal playlist name…"
+        OpportunityWorkflowProgress.Creating -> "Creating private Deal playlist…"
+        OpportunityWorkflowProgress.Verifying -> "Verifying saved session…"
+        OpportunityWorkflowProgress.Clearing -> "Preparing saved playlist contents…"
+        is OpportunityWorkflowProgress.Appending -> "Adding session tracks… batch $batchNumber of ${(total + 99) / 100}"
+        OpportunityWorkflowProgress.Finalizing -> "Saving confirmed Opportunity progress…"
+    }
+
+    private fun createOrdinary(source: Playlist) {
         if (mutableIsRunning.value) return
         val options = try { mutableSettings.value.snapshot() } catch (error: OutputPlanningException) {
             mutableUiState.value = OutputUiState.Error(error.message!!)
@@ -163,6 +363,7 @@ class OutputViewModel(
         generation++
         operation?.cancel()
         mutableNameRequest.value = null
+        mutableConfirmationRequest.value = null
         // Keep the gate held until cancellation completes, including blocking HTTP work.
     }
 
@@ -183,11 +384,15 @@ class OutputViewModel(
         fun factory(
             useCase: CreateOutputPlaylist,
             settingsStorage: OutputSettingsStorage = MemoryOutputSettingsStorage(),
+            opportunityWorkflow: OpportunityWorkflow? = null,
+            initialSourceId: String? = null,
+            diagnostics: DiagnosticLogger = NoOpDiagnosticLogger,
         ): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    OutputViewModel(useCase, settingsStorage) as T
+                    OutputViewModel(useCase, settingsStorage, opportunityWorkflow = opportunityWorkflow,
+                        initialSourceId = initialSourceId, diagnostics = diagnostics) as T
             }
     }
 }

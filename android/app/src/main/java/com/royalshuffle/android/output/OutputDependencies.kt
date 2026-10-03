@@ -9,6 +9,9 @@ import com.royalshuffle.android.data.remote.SpotifyWebApiClient
 import com.royalshuffle.android.domain.shuffle.TrueRandomShuffle
 import com.royalshuffle.android.diagnostics.DiagnosticLoggerProvider
 import com.royalshuffle.android.diagnostics.asWebApiDiagnostics
+import com.royalshuffle.android.data.local.AtomicFileOpportunityPersistence
+import com.royalshuffle.android.opportunity.OpportunityStore
+import com.royalshuffle.android.opportunity.OpportunityIdentityProtection
 
 fun createOutputPlaylistUseCase(
     context: Context,
@@ -28,5 +31,6 @@ fun createOutputPlaylistUseCase(
         registry = preferences,
         shuffler = OccurrenceShuffler { TrueRandomShuffle().shuffle(it) },
         diagnostics = DiagnosticLoggerProvider.get(context),
+        identityProtection = OpportunityIdentityProtection(OpportunityStore(AtomicFileOpportunityPersistence(context))),
     )
 }

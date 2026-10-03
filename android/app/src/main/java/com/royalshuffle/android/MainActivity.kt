@@ -14,6 +14,8 @@ import com.royalshuffle.android.playlist.createPlaylistRepository
 import com.royalshuffle.android.output.OutputViewModel
 import com.royalshuffle.android.output.createOutputPlaylistUseCase
 import com.royalshuffle.android.data.local.SharedPreferencesOutputSettings
+import com.royalshuffle.android.data.local.SharedPreferencesPlaylistPreferences
+import com.royalshuffle.android.opportunity.createOpportunityWorkflow
 import com.royalshuffle.android.ui.RoyalShuffleApp
 import com.royalshuffle.android.diagnostics.DiagnosticLoggerProvider
 import com.royalshuffle.android.diagnostics.createDiagnosticShareCoordinator
@@ -40,6 +42,9 @@ class MainActivity : ComponentActivity() {
         OutputViewModel.factory(
             createOutputPlaylistUseCase(applicationContext, authRepository, authRepository),
             SharedPreferencesOutputSettings(applicationContext),
+            opportunityWorkflow = createOpportunityWorkflow(applicationContext, authRepository, authRepository),
+            initialSourceId = SharedPreferencesPlaylistPreferences(applicationContext).loadSelectedPlaylistId(),
+            diagnostics = diagnostics,
         )
     }
 

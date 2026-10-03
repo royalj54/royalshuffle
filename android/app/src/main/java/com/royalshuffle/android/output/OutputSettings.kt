@@ -19,6 +19,7 @@ data class OutputSettings(
     val mode: SessionLengthMode = SessionLengthMode.FULL,
     val customMinutes: String = "",
     val artistSeparation: Boolean = false,
+    val opportunityEnabled: Boolean = false,
 ) {
     val validationMessage: String?
         get() = if (mode == SessionLengthMode.CUSTOM && parseCustomMinutes(customMinutes) == null)
@@ -47,6 +48,7 @@ fun parseCustomMinutes(text: String): BigInteger? {
 interface OutputSettingsStorage {
     fun load(): OutputSettings
     fun save(settings: OutputSettings)
+    fun saveOpportunityEnabled(enabled: Boolean) = save(load().copy(opportunityEnabled = enabled))
 }
 
 internal class MemoryOutputSettingsStorage : OutputSettingsStorage {

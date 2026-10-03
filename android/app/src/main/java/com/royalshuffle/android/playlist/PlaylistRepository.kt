@@ -6,12 +6,15 @@ import com.royalshuffle.android.diagnostics.DiagnosticLogger
 import com.royalshuffle.android.diagnostics.NoOpDiagnosticLogger
 import com.royalshuffle.android.diagnostics.recordSafely
 import com.royalshuffle.android.output.CreateOutputPlaylist
+import com.royalshuffle.android.output.ManagedIdentityProtection
+import com.royalshuffle.android.output.NoOpportunityIdentityProtection
 
 class PlaylistRepository(
     private val accessTokenProvider: AccessTokenProvider,
     private val playlistApi: PlaylistApi,
     private val preferences: PlaylistPreferences,
     private val diagnostics: DiagnosticLogger = NoOpDiagnosticLogger,
+    private val identityProtection: ManagedIdentityProtection = NoOpportunityIdentityProtection,
 ) {
     suspend fun loadEligiblePlaylists(): PlaylistLoadResult {
         val accessToken = accessTokenProvider.getValidAccessToken()
@@ -40,7 +43,7 @@ class PlaylistRepository(
             }
         }
 
-        val managedIds = preferences.loadManagedPlaylistIds()
+        val managedIds = preferences.loadManagedPlaylistIds() + identityProtection.pendingOutputIds()
         val declinedIds = preferences.loadDeclinedRecoveryPlaylistIds()
         val candidates = playlists.filter {
             it.id !in managedIds &&
@@ -113,6 +116,7 @@ class PlaylistRepository(
     }
 
     fun selectPlaylist(playlistId: String) {
+        identityProtection.requireSourceAllowed(playlistId)
         preferences.saveSelectedPlaylistId(playlistId)
     }
 

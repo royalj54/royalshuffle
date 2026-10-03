@@ -17,6 +17,8 @@ data class OutputIdentity(val sourceId: String, val sessionKey: String) {
 }
 
 interface OrdinaryOutputRegistry {
+    /** Sources reserved by ordinary bindings; needed for cross-family output collision checks. */
+    fun sourcePlaylistIds(): Set<String> = emptySet()
     fun boundOutput(identity: OutputIdentity): String?
     /** Compare the association again immediately before remote mutation. */
     fun requireCurrent(identity: OutputIdentity, expectedOutputId: String?)

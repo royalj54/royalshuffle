@@ -20,14 +20,20 @@ class CreateOutputPlaylist(
     private val diagnostics: DiagnosticLogger = NoOpDiagnosticLogger,
     private val planner: OutputPlanner = OutputPlanner(shuffler),
     private val registry: OrdinaryOutputRegistry,
+    private val coordinator: ManagedMutationCoordinator = ManagedMutationCoordinator.Process,
+    private val identityProtection: ManagedIdentityProtection = NoOpportunityIdentityProtection,
 ) {
     suspend fun execute(
         source: Playlist,
         options: OutputOptions = OutputOptions(),
         nameProvider: CreationNameProvider = RequiredCreationName,
         onProgress: (OutputProgress) -> Unit = {},
-    ): OutputResult? {
+    ): OutputResult? = coordinator.workflow { executeOwned(source, options, nameProvider, onProgress) }
+
+    private suspend fun executeOwned(source: Playlist, options: OutputOptions, nameProvider: CreationNameProvider,
+        onProgress: (OutputProgress) -> Unit): OutputResult? {
         options.validate()
+        identityProtection.requireSourceAllowed(source.id)
         val identity = OutputIdentity.from(source.id, options)
         val expectedOutputId = registry.boundOutput(identity)
         if (source.id in preferences.loadManagedPlaylistIds()) {
@@ -53,7 +59,8 @@ class CreateOutputPlaylist(
         )
         currentCoroutineContext().ensureActive()
         onProgress(OutputProgress.ResolvingOutput)
-        val existing = expectedOutputId?.let { resolveOutput(it, accessToken) }
+        expectedOutputId?.let(identityProtection::requireOutputAvailable)
+        val existing = expectedOutputId?.let { ManagedOutputResolver(api).resolve(it, accessToken) }
         val action = if (existing == null) OutputAction.CREATED else OutputAction.UPDATED
         val output = if (existing != null) existing else {
             // A confirmed-missing association remains intact throughout naming and creation.
@@ -69,6 +76,7 @@ class CreateOutputPlaylist(
                 throw OutputPlaylistException(OutputPlaylistException.Reason.SOURCE_OUTPUT_ID_COLLISION)
             }
             try {
+                identityProtection.requireOutputAvailable(created.id)
                 registry.bind(identity, created.id, expectedOutputId)
             } catch (error: CancellationException) {
                 throw error
@@ -153,32 +161,6 @@ class CreateOutputPlaylist(
         return OutputResult(output, shuffledUris.size, skippedLocalItemCount,
             plan.skippedUnsupportedItemCount, plan.requestedDurationMs, plan.durationMs,
             plan.sourceShorterThanTarget, action)
-    }
-
-    private suspend fun resolveOutput(outputId: String, accessToken: String): Playlist? {
-        var next: String? = "https://api.spotify.com/v1/me/playlists?limit=50"
-        val visited = mutableSetOf<String>()
-        while (next != null) {
-            currentCoroutineContext().ensureActive()
-            if (!visited.add(next)) throw OutputPlaylistException(OutputPlaylistException.Reason.INVALID_PAGINATION)
-            val page = api.getPlaylistsPage(next, accessToken)
-            page.playlists.firstOrNull { it.id == outputId }?.let {
-                // Fresh authenticated /me/playlists is the user's owned/followed list.
-                // The persisted exact-ID binding supplies managed-output provenance.
-                return it
-            }
-            next = page.nextUrl
-        }
-        val readable = try {
-            api.getPlaylist(outputId, accessToken).also {
-                if (it.id != outputId) throw OutputRegistryException("Managed output lookup returned a different identity.")
-            }
-        } catch (error: SpotifyWebApiException) {
-            if (error.httpStatus == 404) null else throw error
-        }
-        // Spotify's "delete" is unfollow: the exact old ID can remain readable.
-        // Only an explicit false confirms removal. Errors must never authorize replacement.
-        return readable?.takeIf { api.isPlaylistSaved(outputId, accessToken) }
     }
 
     private suspend fun loadAllItems(
