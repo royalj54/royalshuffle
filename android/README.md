@@ -2,6 +2,9 @@
 
 Native Android prototype built with Kotlin and Jetpack Compose.
 
+Android 0.3.0 (versionCode 3), package `com.royalshuffle.android`.
+The debug APK is the current acceptance/distribution artifact.
+
 ## Current scope
 
 The prototype provides Spotify Authorization Code with PKCE, authenticated
@@ -37,7 +40,8 @@ Output options are snapshotted on submission. A submission gate prevents
 overlapping operations, including token refresh. Clearing/disconnecting cancels
 active work and suppresses obsolete progress/results. Execution is foreground
 only: interruption can leave a remote output behind, and process-death recovery
-is not implemented.
+is not implemented for ordinary outputs. Opportunity has durable recovery as
+described below.
 
 ## Managed outputs and naming
 
@@ -80,6 +84,25 @@ partial append, and count only acknowledged new items. Ambiguous writes are not
 automatically replayed. Partial outputs remain bound for a fresh regeneration;
 this is not durable delivery recovery.
 
+## Balanced Opportunity
+
+Balanced Opportunity is optional and defaults off. It deals unique track URIs
+from a durable per-source rotation, retaining undealt membership between Deals.
+Session Length controls Deal membership; Artist Separation applies afterward.
+
+Version-1 rotation and pending Deal state is atomically persisted in
+`files/opportunity/state.json`. A prepared Deal records its exact ordered tracks
+before remote writes. Recovery after interruption or process death uses that
+saved Deal without redrawing membership. Raw output verification precedes durable
+completion and rotation depletion; ambiguous writes are not blindly replayed.
+
+Pending Deals remain recoverable when the source is missing from discovery.
+Confirmed abandonment clears the pending Deal while retaining an existing active
+rotation; it does not delete the Spotify playlist. Opportunity outputs use
+`Dealt by RoyalShuffle | Spotify Companion`, distinct from ordinary-output
+recovery metadata. Shared mutation serialization coordinates ordinary outputs,
+Opportunity operations, and managed registry changes.
+
 ## Package structure
 
 - `domain/model`: platform-independent RoyalShuffle models.
@@ -113,3 +136,19 @@ From this directory:
 ```shell
 ./gradlew testDebugUnitTest assembleDebug
 ```
+
+PowerShell equivalent:
+
+```powershell
+.\gradlew.bat testDebugUnitTest assembleDebug
+```
+
+Expected artifact: `app/build/outputs/apk/debug/app-debug.apk` (repository path
+`android/app/build/outputs/apk/debug/app-debug.apk`). About reads the version from
+generated BuildConfig metadata and labels debug builds as development builds.
+
+An in-place upgrade requires the same package and signing identity, with a higher
+versionCode. Preserve the debug keystore used for existing installations; do not
+uninstall or clear storage when testing data retention. The current acceptance
+environment uses local Gradle/toolchain changes that are separate from the
+version/release checkpoint. No signed-release publishing pipeline is configured.
