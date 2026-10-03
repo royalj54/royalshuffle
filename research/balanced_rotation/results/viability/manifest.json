@@ -1,0 +1,139 @@
+{
+  "python": "3.12.14 (main, Aug 25 2026, 14:01:42) [MSC v.1944 64 bit (AMD64)]",
+  "executable": "C:\\Users\\royal\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+  "windows_head": "cadc2e861f472018ef789e532a317f18fdbc6d3e",
+  "artist_module_sha256": "543970770ce4611110f26ce85bbd842a963850465792b8382cb64bdc8fc79902",
+  "research_files_sha256": {
+    "README.md": "5f7309efd3f686fa64159bfdbd49c78095e73c3ef614e20186ef7248cd9274da",
+    "viability.py": "a40ec00331197a1246b18abdc6021d73bc2f958f7161266b9ee4725b51e3dcdd",
+    "analyze_viability.py": "2cfd024bb34301bd50d92cb67549f2077acc4b8e0ec66e4b7d1c731ab588eaa2",
+    "test_viability.py": "971002c11b5a6565376af1ed822d16a82878d276a1f513e7ee53ab993ccd7dc0",
+    "VIABILITY_REPORT.md": "95924f44b853f9c06fefb6e3c47faa47a3f834b050fe9bf58f81e39b67425a62"
+  },
+  "runs": [
+    {
+      "name": "screen",
+      "arguments": [
+        "-B",
+        "-m",
+        "research.balanced_rotation.viability",
+        "--output",
+        "research\\balanced_rotation\\results\\viability\\screen.json",
+        "--artist-module",
+        "C:\\Users\\royal\\.codex\\worktrees\\custom-session-length\\RoyalShuffle\\artist_separation.py",
+        "--seeds",
+        "8",
+        "--seed-start",
+        "0",
+        "--rotations",
+        "36",
+        "--candidates",
+        "true_random,binary_n1,binary_n2,binary_n3,binary_7days,ordinal_decay,duration_decay,duration_elapsed,duration_combined,duration_n2,generation_count,heard_oracle",
+        "--scenario-filter",
+        "60M/60M,60M/45M,60M/20M,120M/120M,120M/60M,120M/30M,180M/180M,180M/60M,180M/45M,180M/30M,Full/5%,Full/50%,Full/100%,Full/30M,variable,mixed,abandon_half,regenerate,custom37,artist_even_60_45_sep0,artist_even_60_45_sep1,artist_even_180_30_sep0,artist_even_180_30_sep1,artist_even_None_30_sep0,artist_even_None_30_sep1,artist_even_None_0.5_sep0,artist_even_None_0.5_sep1,artist_moderate_60_45_sep0,artist_moderate_60_45_sep1,artist_moderate_180_30_sep0,artist_moderate_180_30_sep1,artist_moderate_None_30_sep0,artist_moderate_None_30_sep1,artist_moderate_None_0.5_sep0,artist_moderate_None_0.5_sep1,artist_kpop_60_45_sep0,artist_kpop_60_45_sep1,artist_kpop_180_30_sep0,artist_kpop_180_30_sep1,artist_kpop_None_30_sep0,artist_kpop_None_30_sep1,artist_kpop_None_0.5_sep0,artist_kpop_None_0.5_sep1,artist_dominant_60_45_sep0,artist_dominant_60_45_sep1,artist_dominant_180_30_sep0,artist_dominant_180_30_sep1,artist_dominant_None_30_sep0,artist_dominant_None_30_sep1,artist_dominant_None_0.5_sep0,artist_dominant_None_0.5_sep1,mutation,duplicates,heavy_60,heavy_180,heavy_None,sparse_60,sparse_180,sparse_None,daily_60,daily_180,daily_None,shuffled_60,skips_60,shuffled_180,skips_180,shuffled_None,skips_None,long_inactivity,burst_regenerate"
+      ],
+      "trials": 14400,
+      "sha256": "579c955993455fef6663a5314d37303a9d653bba90e3283a6688ec655c1c9ed0"
+    },
+    {
+      "name": "confirmation",
+      "arguments": [
+        "-B",
+        "-m",
+        "research.balanced_rotation.viability",
+        "--output",
+        "research\\balanced_rotation\\results\\viability\\confirmation.json",
+        "--artist-module",
+        "C:\\Users\\royal\\.codex\\worktrees\\custom-session-length\\RoyalShuffle\\artist_separation.py",
+        "--seeds",
+        "16",
+        "--seed-start",
+        "100",
+        "--rotations",
+        "48",
+        "--candidates",
+        "true_random,binary_7days,duration_decay,generation_count,heard_oracle",
+        "--scenario-filter",
+        "60M/60M,180M/30M,Full/30M,mixed,regenerate,custom37,artist_kpop_None_30_sep0,artist_kpop_None_30_sep1,heavy_180,sparse_180,shuffled_180,shuffled_None,burst_regenerate"
+      ],
+      "trials": 2960,
+      "sha256": "856020ed12e4c789455084a9a880572386d70dc82ea5b45fc259104b5684b3ca"
+    },
+    {
+      "name": "matched_budget",
+      "arguments": [
+        "-B",
+        "-m",
+        "research.balanced_rotation.viability",
+        "--output",
+        "research\\balanced_rotation\\results\\viability\\matched_budget.json",
+        "--artist-module",
+        "C:\\Users\\royal\\.codex\\worktrees\\custom-session-length\\RoyalShuffle\\artist_separation.py",
+        "--seeds",
+        "16",
+        "--seed-start",
+        "100",
+        "--rotations",
+        "48",
+        "--candidates",
+        "true_random,binary_7days,duration_decay,generation_count,heard_oracle",
+        "--scenario-filter",
+        "30M/30M,60M/30M,120M/30M"
+      ],
+      "trials": 1200,
+      "sha256": "99a1e2a384295da8af167fe0a625b13e417a2148ec827b60bcf9dc0f62ebcb03"
+    },
+    {
+      "name": "sensitivity",
+      "arguments": [
+        "-B",
+        "-m",
+        "research.balanced_rotation.viability",
+        "--output",
+        "research\\balanced_rotation\\results\\viability\\sensitivity.json",
+        "--artist-module",
+        "C:\\Users\\royal\\.codex\\worktrees\\custom-session-length\\RoyalShuffle\\artist_separation.py",
+        "--seeds",
+        "8",
+        "--seed-start",
+        "200",
+        "--rotations",
+        "36",
+        "--candidates",
+        "true_random,duration_tau20_p0.2,duration_tau20_p0.45,duration_tau20_p0.9,duration_tau60_p0.2,duration_tau60_p0.45,duration_tau60_p0.9,duration_tau120_p0.2,duration_tau120_p0.45,duration_tau120_p0.9,duration_decay0.5,duration_decay0.95,binary_n2_p0.1,binary_n2_p0.65",
+        "--scenario-filter",
+        "60M/60M,180M/30M,Full/30M",
+        "--sensitivity"
+      ],
+      "trials": 1680,
+      "sha256": "e9a4b6e4c0d76dba4ff29fa95d30340a967db33e6e839da85f2aac563e338281"
+    },
+    {
+      "name": "count_sensitivity",
+      "arguments": [
+        "-B",
+        "-m",
+        "research.balanced_rotation.viability",
+        "--output",
+        "research\\balanced_rotation\\results\\viability\\count_sensitivity.json",
+        "--artist-module",
+        "C:\\Users\\royal\\.codex\\worktrees\\custom-session-length\\RoyalShuffle\\artist_separation.py",
+        "--seeds",
+        "8",
+        "--seed-start",
+        "200",
+        "--rotations",
+        "36",
+        "--candidates",
+        "true_random,count_p0.2,count_p0.9",
+        "--scenario-filter",
+        "60M/60M,180M/30M,Full/30M",
+        "--sensitivity"
+      ],
+      "trials": 360,
+      "sha256": "29c9cd868bd92b9bfa37d45bab6ac6c8cb65e2818888d3f4dcb1f30be0ce37ec"
+    }
+  ],
+  "total_trials": 20600,
+  "notes": "Synthetic offline research only. No production writes. Screening and confirmation use distinct seeds; sensitivity is exploratory. Run argv with the recorded Python executable from repository root."
+}
